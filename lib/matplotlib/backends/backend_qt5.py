@@ -24,6 +24,7 @@ from matplotlib.figure import Figure
 
 from matplotlib.widgets import SubplotTool
 try:
+    raise ImportError # TODO: disabled figureoptions since they require some rework to make them work with PythonQt
     import matplotlib.backends.qt_editor.figureoptions as figureoptions
 except ImportError:
     figureoptions = None
@@ -215,8 +216,9 @@ class TimerQT(TimerBase):
     def _timer_stop(self):
         self._timer.stop()
 
-
-class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
+# PythonQt stops initialising superclasses after one of its classes
+# so we've changed the order...
+class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
 
     # map Qt button codes to MouseEvent's ones:
     buttond = {QtCore.Qt.LeftButton: 1,
@@ -418,8 +420,16 @@ class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
 class MainWindow(QtWidgets.QMainWindow):
     closing = QtCore.Signal()
 
+    def __init__(self):
+        QtGui.QMainWindow.__init__(self)
+        self._closeCallbacks = []
+
+    def connectClosing(self, callback):
+        self._closeCallbacks.append(callback)
+
     def closeEvent(self, event):
-        self.closing.emit()
+        for callback in self._closeCallbacks:
+            callback()
         QtWidgets.QMainWindow.closeEvent(self, event)
 
 
@@ -436,11 +446,12 @@ class FigureManagerQT(FigureManagerBase):
     def __init__(self, canvas, num):
         if DEBUG:
             print('FigureManagerQT.%s' % fn_name())
-        FigureManagerBase.__init__(self, canvas, num)
+        super(FigureManagerQT, self).__init__(canvas, num)
         self.canvas = canvas
         self.window = MainWindow()
-        self.window.closing.connect(canvas.close_event)
-        self.window.closing.connect(self._widgetclosed)
+        self.window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self.window.connectClosing(canvas.close_event)
+        self.window.connectClosing(self._widgetclosed)
 
         self.window.setWindowTitle("Figure %d" % num)
         image = os.path.join(matplotlib.rcParams['datapath'],
@@ -466,15 +477,15 @@ class FigureManagerQT(FigureManagerBase):
         self.toolbar = self._get_toolbar(self.canvas, self.window)
         if self.toolbar is not None:
             self.window.addToolBar(self.toolbar)
-            self.toolbar.message.connect(self.statusbar_label.setText)
-            tbs_height = self.toolbar.sizeHint().height()
+            #self.toolbar.message.connect(self.statusbar_label.setText)
+            tbs_height = self.toolbar.sizeHint.height()
         else:
             tbs_height = 0
 
         # resize the main window so it will display the canvas with the
         # requested size:
         cs = canvas.sizeHint()
-        sbs = self.window.statusBar().sizeHint()
+        sbs = self.window.statusBar().sizeHint
         self._status_and_tool_height = tbs_height + sbs.height()
         height = cs.height() + self._status_and_tool_height
         self.window.resize(cs.width(), height)
@@ -553,7 +564,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
     def __init__(self, canvas, parent, coordinates=True):
         """ coordinates: should we show the coordinates on the right? """
         self.canvas = canvas
-        self.parent = parent
+        self._parent = parent
         self.coordinates = coordinates
         self._actions = {}
         """A mapping of toolitem method names to their QActions"""
@@ -607,7 +618,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
             allaxes = self.canvas.figure.get_axes()
             if not allaxes:
                 QtWidgets.QMessageBox.warning(
-                    self.parent, "Error", "There are no axes to edit.")
+                    self._parent, "Error", "There are no axes to edit.")
                 return
             if len(allaxes) == 1:
                 axes = allaxes[0]
@@ -632,7 +643,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
                                          ylabel=ylabel, label=label,
                                          axes_repr=repr(axes)))
                 item, ok = QtWidgets.QInputDialog.getItem(
-                    self.parent, 'Customize', 'Select axes:', titles, 0, False)
+                    self._parent, 'Customize', 'Select axes:', titles, 0, False)
                 if ok:
                     axes = allaxes[titles.index(six.text_type(item))]
                 else:
@@ -657,7 +668,8 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         self.canvas.draw_idle()
 
     def set_message(self, s):
-        self.message.emit(s)
+        # TODO:
+        #self.message.emit(s)
         if self.coordinates:
             self.locLabel.setText(s)
 
@@ -683,7 +695,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
     def configure_subplots(self):
         image = os.path.join(matplotlib.rcParams['datapath'],
                              'images', 'matplotlib.png')
-        dia = SubplotToolQt(self.canvas.figure, self.parent)
+        dia = SubplotToolQt(self.canvas.figure, self._parent)
         dia.setWindowIcon(QtGui.QIcon(image))
         dia.exec_()
 
@@ -706,7 +718,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
             filters.append(filter)
         filters = ';;'.join(filters)
 
-        fname, filter = _getSaveFileName(self.parent,
+        fname, filter = _getSaveFileName(self._parent,
                                          "Choose a filename to save to",
                                  start, filters, selectedFilter)
         if fname:
@@ -730,7 +742,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
         UiSubplotTool.__init__(self, None)
 
         self.targetfig = targetfig
-        self.parent = parent
+        self._parent = parent
         self.donebutton.clicked.connect(self.close)
         self.resetbutton.clicked.connect(self.reset)
         self.tightlayout.clicked.connect(self.functight)
@@ -762,7 +774,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             slider.setSliderPosition(int(self.defaults[attr] * 1000))
 
     def funcleft(self, val):
-        if val == self.sliderright.value():
+        if val == self.sliderright.value:
             val -= 1
         val /= 1000.
         self.targetfig.subplots_adjust(left=val)
@@ -771,7 +783,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             self.targetfig.canvas.draw_idle()
 
     def funcright(self, val):
-        if val == self.sliderleft.value():
+        if val == self.sliderleft.value:
             val += 1
         val /= 1000.
         self.targetfig.subplots_adjust(right=val)
@@ -780,7 +792,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             self.targetfig.canvas.draw_idle()
 
     def funcbottom(self, val):
-        if val == self.slidertop.value():
+        if val == self.slidertop.value:
             val -= 1
         val /= 1000.
         self.targetfig.subplots_adjust(bottom=val)
@@ -789,7 +801,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             self.targetfig.canvas.draw_idle()
 
     def functop(self, val):
-        if val == self.sliderbottom.value():
+        if val == self.sliderbottom.value:
             val += 1
         val /= 1000.
         self.targetfig.subplots_adjust(top=val)

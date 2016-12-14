@@ -14,9 +14,10 @@ QT_API_PYQT = 'PyQt4'       # API is not set here; Python 2.x default is V 1
 QT_API_PYQTv2 = 'PyQt4v2'   # forced to Version 2 API
 QT_API_PYSIDE = 'PySide'    # only supports Version 2 API
 QT_API_PYQT5 = 'PyQt5'       # use PyQt5 API; Version 2 with module shim
+QT_API_PYTHONQT = 'PythonQt' # use PythonQt API for Qt5
 
 ETS = dict(pyqt=(QT_API_PYQTv2, 4), pyside=(QT_API_PYSIDE, 4),
-           pyqt5=(QT_API_PYQT5, 5))
+           pyqt5=(QT_API_PYQT5, 5), pythonqt=(QT_API_PYTHONQT, 5))
 # ETS is a dict of env variable to (QT_API, QT_MAJOR_VERSION)
 # If the ETS QT_API environment variable is set, use it, but only
 # if the varible if of the same major QT version.  Note that
@@ -57,6 +58,10 @@ if 'PyQt4' in sys.modules:
 if 'PyQt5' in sys.modules:
     # the user has imported PyQt5 before importing mpl
     QT_API = QT_API_PYQT5
+
+if 'PythonQt' in sys.modules:
+    # the user has imported PyQt5 before importing mpl
+    QT_API = QT_API_PYTHONQT
 
 if (QT_API_ENV is not None) and QT_API is None:
     try:
@@ -181,9 +186,20 @@ if QT_API == QT_API_PYSIDE:  # try importing pyside
 
     _getSaveFileName = QtGui.QFileDialog.getSaveFileName
 
+elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
+    from PythonQt import QtCore, QtGui
+    __version__ = "3.1"
+    __version_info__ = "-"
+
+    QtCore.Signal = lambda *x: NotImplemented
+
+    # PythonQt does not yet support a getSaveFileName variant returning the selected filter
+    def _getSaveFileName(*args, **kwargs):
+        return (QtGui.QFileDialog.getSaveFileName(*args, **kwargs), None)
+
 
 # Apply shim to Qt4 APIs to make them look like Qt5
-if QT_API in (QT_API_PYQT, QT_API_PYQTv2, QT_API_PYSIDE):
+if QT_API in (QT_API_PYQT, QT_API_PYQTv2, QT_API_PYSIDE, QT_API_PYTHONQT):
     '''Import all used QtGui objects into QtWidgets
 
     Here I've opted to simple copy QtGui into QtWidgets as that

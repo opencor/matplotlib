@@ -1678,6 +1678,7 @@ class FigureCanvasBase(object):
                          'Tagged Image File Format')
 
     def __init__(self, figure):
+        super(FigureCanvasBase, self).__init__()
         self._is_idle_drawing = True
         self._is_saving = False
         figure.set_canvas(self)
@@ -2589,6 +2590,7 @@ class FigureManagerBase(object):
         The figure number
     """
     def __init__(self, canvas, num):
+        super(FigureManagerBase, self).__init__()
         self.canvas = canvas
         canvas.manager = self  # store a pointer to parent
         self.num = num

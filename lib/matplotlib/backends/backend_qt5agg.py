@@ -6,7 +6,6 @@ from __future__ import (absolute_import, division, print_function,
 
 from matplotlib.externals import six
 
-import ctypes
 import sys
 import traceback
 
@@ -27,10 +26,6 @@ from .backend_qt5 import backend_version
 from .qt_compat import QT_API
 
 DEBUG = False
-
-_decref = ctypes.pythonapi.Py_DecRef
-_decref.argtypes = [ctypes.py_object]
-_decref.restype = None
 
 
 def new_figure_manager(num, *args, **kwargs):
@@ -90,12 +85,10 @@ class FigureCanvasQTAggBase(object):
             # into argb format and is in a 4 byte unsigned int.  Little endian
             # system is LSB first and expects the bytes in reverse order
             # (bgra).
-            if QtCore.QSysInfo.ByteOrder == QtCore.QSysInfo.LittleEndian:
-                stringBuffer = self.renderer._renderer.tostring_bgra()
-            else:
-                stringBuffer = self.renderer._renderer.tostring_argb()
-
-            refcnt = sys.getrefcount(stringBuffer)
+#            if QtCore.QSysInfo.ByteOrder == QtCore.QSysInfo.LittleEndian:
+            stringBuffer = self.renderer._renderer.tostring_bgra()
+#            else:
+#                stringBuffer = self.renderer._renderer.tostring_argb()
 
             # convert the Agg rendered image -> qImage
             qImage = QtGui.QImage(stringBuffer, self.renderer.width,
@@ -116,13 +109,7 @@ class FigureCanvasQTAggBase(object):
                 p.drawRect(x, y, w, h)
             p.end()
 
-            # This works around a bug in PySide 1.1.2 on Python 3.x,
-            # where the reference count of stringBuffer is incremented
-            # but never decremented by QImage.
-            # TODO: revert PR #1323 once the issue is fixed in PySide.
             del qImage
-            if refcnt != sys.getrefcount(stringBuffer):
-                _decref(stringBuffer)
         else:
             bbox = self.blitbox
             l, b, r, t = bbox.extents
@@ -173,7 +160,7 @@ class FigureCanvasQTAggBase(object):
             QtCore.QTimer.singleShot(0, self.__draw_idle_agg)
 
     def __draw_idle_agg(self, *args):
-        if self.height() < 0 or self.width() < 0:
+        if self.height < 0 or self.width < 0:
             self._agg_draw_pending = False
             return
         try:
