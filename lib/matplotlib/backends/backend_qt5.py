@@ -158,7 +158,8 @@ def new_figure_manager(num, *args, **kwargs):
     """
     Create a new figure manager instance
     """
-    thisFig = Figure(*args, **kwargs)
+    FigureClass = kwargs.pop('FigureClass', Figure)
+    thisFig = FigureClass(*args, **kwargs)
     return new_figure_manager_given_figure(num, thisFig)
 
 
@@ -552,7 +553,7 @@ class FigureManagerQT(FigureManagerBase):
         self.window.close()
 
     def get_window_title(self):
-        return six.text_type(self.window.windowTitle())
+        return six.text_type(self.window.windowTitle)
 
     def set_window_title(self, title):
         self.window.setWindowTitle(title)
