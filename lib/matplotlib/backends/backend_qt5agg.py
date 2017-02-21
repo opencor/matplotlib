@@ -122,7 +122,7 @@ class FigureCanvasQTAggBase(object):
                                   QtGui.QImage.Format_ARGB32)
             # Adjust the stringBuffer reference count to work around a memory
             # leak bug in QImage() under PySide on Python 3.x
-            if QT_API == 'PySide' and six.PY3:
+            if QT_API == QT_API_PYSIDE and six.PY3:
                 ctypes.c_long.from_address(id(stringBuffer)).value = 1
 
             pixmap = QtGui.QPixmap.fromImage(qImage)
