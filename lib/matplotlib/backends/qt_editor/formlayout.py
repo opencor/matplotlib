@@ -140,7 +140,7 @@ class ColorLayout(QtWidgets.QHBoxLayout):
         self.lineedit.setText(color.name())
 
     def text(self):
-        return self.lineedit.text
+        return self.lineedit.text()
 
 
 def font_is_installed(font):
@@ -219,7 +219,7 @@ class FontLayout(QtWidgets.QGridLayout):
 
 
 def is_edit_valid(edit):
-    text = edit.text
+    text = edit.text()
     state = edit.validator().validate(text, 0)[0]
 
     return state == QtGui.QDoubleValidator.Acceptable
@@ -329,9 +329,9 @@ class FormWidget(QtWidgets.QWidget):
             elif tuple_to_qfont(value) is not None:
                 value = field.get_font()
             elif isinstance(value, six.string_types) or is_color_like(value):
-                value = six.text_type(field.text)
+                value = six.text_type(field.text())
             elif isinstance(value, (list, tuple)):
-                index = int(field.currentIndex)
+                index = int(field.currentIndex())
                 if isinstance(value[0], (list, tuple)):
                     value = value[index][0]
                 else:
@@ -339,7 +339,7 @@ class FormWidget(QtWidgets.QWidget):
             elif isinstance(value, bool):
                 value = field.checkState() == QtCore.Qt.Checked
             elif isinstance(value, float):
-                value = float(str(field.text))
+                value = float(str(field.text()))
             elif isinstance(value, int):
                 value = int(field.value())
             elif isinstance(value, datetime.datetime):
@@ -347,7 +347,7 @@ class FormWidget(QtWidgets.QWidget):
             elif isinstance(value, datetime.date):
                 value = field.date().toPyDate()
             else:
-                value = eval(str(field.text))
+                value = eval(str(field.text()))
             valuelist.append(value)
         return valuelist
 

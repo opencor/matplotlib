@@ -479,14 +479,14 @@ class FigureManagerQT(FigureManagerBase):
         if self.toolbar is not None:
             self.window.addToolBar(self.toolbar)
             #self.toolbar.message.connect(self.statusbar_label.setText)
-            tbs_height = self.toolbar.sizeHint.height()
+            tbs_height = self.toolbar.sizeHint().height()
         else:
             tbs_height = 0
 
         # resize the main window so it will display the canvas with the
         # requested size:
         cs = canvas.sizeHint()
-        sbs = self.window.statusBar().sizeHint
+        sbs = self.window.statusBar().sizeHint()
         self._status_and_tool_height = tbs_height + sbs.height()
         height = cs.height() + self._status_and_tool_height
         self.window.resize(cs.width(), height)
@@ -553,7 +553,7 @@ class FigureManagerQT(FigureManagerBase):
         self.window.close()
 
     def get_window_title(self):
-        return six.text_type(self.window.windowTitle)
+        return six.text_type(self.window.windowTitle())
 
     def set_window_title(self, title):
         self.window.setWindowTitle(title)
@@ -775,7 +775,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             slider.setSliderPosition(int(self.defaults[attr] * 1000))
 
     def funcleft(self, val):
-        if val == self.sliderright.value:
+        if val == self.sliderright.value():
             val -= 1
         val /= 1000.
         self.targetfig.subplots_adjust(left=val)
@@ -784,7 +784,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             self.targetfig.canvas.draw_idle()
 
     def funcright(self, val):
-        if val == self.sliderleft.value:
+        if val == self.sliderleft.value():
             val += 1
         val /= 1000.
         self.targetfig.subplots_adjust(right=val)
@@ -793,7 +793,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             self.targetfig.canvas.draw_idle()
 
     def funcbottom(self, val):
-        if val == self.slidertop.value:
+        if val == self.slidertop.value():
             val -= 1
         val /= 1000.
         self.targetfig.subplots_adjust(bottom=val)
@@ -802,7 +802,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
             self.targetfig.canvas.draw_idle()
 
     def functop(self, val):
-        if val == self.sliderbottom.value:
+        if val == self.sliderbottom.value():
             val += 1
         val /= 1000.
         self.targetfig.subplots_adjust(top=val)
