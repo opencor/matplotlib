@@ -228,3 +228,9 @@ class UiSubplotTool(QtWidgets.QDialog):
         hbox2.addWidget(self.donebutton)
 
         self.donebutton.clicked.connect(self.accept)
+
+    def accept(self):
+        QtWidgets.QDialog.accept(self)
+
+    def close(self):
+        QtWidgets.QDialog.close(self)

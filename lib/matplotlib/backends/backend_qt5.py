@@ -219,8 +219,9 @@ class TimerQT(TimerBase):
     def _timer_stop(self):
         self._timer.stop()
 
-
-class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
+# PythonQt stops initialising superclasses after one of its classes
+# so we've changed the order...
+class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
 
     # map Qt button codes to MouseEvent's ones:
     buttond = {QtCore.Qt.LeftButton: 1,
@@ -440,8 +441,16 @@ class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
 class MainWindow(QtWidgets.QMainWindow):
     closing = QtCore.Signal()
 
+    def __init__(self):
+        QtGui.QMainWindow.__init__(self)
+        self._closeCallbacks = []
+
+    def connectClosing(self, callback):
+        self._closeCallbacks.append(callback)
+
     def closeEvent(self, event):
-        self.closing.emit()
+        for callback in self._closeCallbacks:
+            callback()
         QtWidgets.QMainWindow.closeEvent(self, event)
 
 
@@ -458,11 +467,12 @@ class FigureManagerQT(FigureManagerBase):
     def __init__(self, canvas, num):
         if DEBUG:
             print('FigureManagerQT.%s' % fn_name())
-        FigureManagerBase.__init__(self, canvas, num)
+        super(FigureManagerQT, self).__init__(canvas, num)
         self.canvas = canvas
         self.window = MainWindow()
-        self.window.closing.connect(canvas.close_event)
-        self.window.closing.connect(self._widgetclosed)
+        self.window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self.window.connectClosing(canvas.close_event)
+        self.window.connectClosing(self._widgetclosed)
 
         self.window.setWindowTitle("Figure %d" % num)
         image = os.path.join(matplotlib.rcParams['datapath'],
@@ -576,7 +586,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
     def __init__(self, canvas, parent, coordinates=True):
         """ coordinates: should we show the coordinates on the right? """
         self.canvas = canvas
-        self.parent = parent
+        self._parent = parent
         self.coordinates = coordinates
         self._actions = {}
         """A mapping of toolitem method names to their QActions"""
@@ -641,7 +651,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         # the actual sizeHint, so override it instead in order to make the
         # aesthetic adjustments noted above.
         def sizeHint(self):
-            size = super(NavigationToolbar2QT, self).sizeHint()
+            size = QtWidgets.QToolBar.sizeHint(self)
             size.setHeight(max(48, size.height()))
             return size
 
@@ -714,7 +724,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
     def configure_subplots(self):
         image = os.path.join(matplotlib.rcParams['datapath'],
                              'images', 'matplotlib.png')
-        dia = SubplotToolQt(self.canvas.figure, self.parent)
+        dia = SubplotToolQt(self.canvas.figure, self._parent)
         dia.setWindowIcon(QtGui.QIcon(image))
         dia.exec_()
 
@@ -737,7 +747,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
             filters.append(filter)
         filters = ';;'.join(filters)
 
-        fname, filter = _getSaveFileName(self.parent,
+        fname, filter = _getSaveFileName(self._parent,
                                          "Choose a filename to save to",
                                  start, filters, selectedFilter)
         if fname:
@@ -761,7 +771,7 @@ class SubplotToolQt(SubplotTool, UiSubplotTool):
         UiSubplotTool.__init__(self, None)
 
         self.targetfig = targetfig
-        self.parent = parent
+        self._parent = parent
         self.donebutton.clicked.connect(self.close)
         self.resetbutton.clicked.connect(self.reset)
         self.tightlayout.clicked.connect(self.functight)
