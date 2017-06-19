@@ -26,7 +26,7 @@ from matplotlib.widgets import SubplotTool
 import matplotlib.backends.qt_editor.figureoptions as figureoptions
 
 from .qt_compat import (QtCore, QtGui, QtWidgets, _getSaveFileName,
-                        __version__, is_pyqt5)
+                        __version__, is_qt5, is_pyqt5)
 from matplotlib.backends.qt_editor.formsubplottool import UiSubplotTool
 
 backend_version = __version__
@@ -128,9 +128,9 @@ def _create_qApp():
         if DEBUG:
             print("Starting up QApplication")
         app = QtWidgets.QApplication.instance()
-        if app is None:
+        if is_pyqt5() and app is None:
             # check for DISPLAY env variable on X11 build of Qt
-            if is_pyqt5():
+            if is_qt5():
                 try:
                     from PyQt5 import QtX11Extras
                     is_x11_build = True
@@ -148,7 +148,7 @@ def _create_qApp():
         else:
             qApp = app
 
-    if is_pyqt5():
+    if is_qt5():
         try:
             qApp.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
             qApp.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
@@ -158,10 +158,11 @@ def _create_qApp():
 
 class Show(ShowBase):
     def mainloop(self):
-        # allow KeyboardInterrupt exceptions to close the plot window.
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
-        global qApp
-        qApp.exec_()
+        if is_pyqt5():
+            # allow KeyboardInterrupt exceptions to close the plot window.
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            global qApp
+            qApp.exec_()
 
 
 show = Show()
@@ -595,7 +596,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         NavigationToolbar2.__init__(self, canvas)
 
     def _icon(self, name):
-        if is_pyqt5():
+        if is_qt5():
             name = name.replace('.png', '_large.png')
         pm = QtGui.QPixmap(os.path.join(self.basedir, name))
         if hasattr(pm, 'setDevicePixelRatio'):
@@ -642,11 +643,11 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         # Esthetic adjustments - we need to set these explicitly in PyQt5
         # otherwise the layout looks different - but we don't want to set it if
         # not using HiDPI icons otherwise they look worse than before.
-        if is_pyqt5():
+        if is_qt5():
             self.setIconSize(QtCore.QSize(24, 24))
             self.layout().setSpacing(12)
 
-    if is_pyqt5():
+    if is_qt5():
         # For some reason, self.setMinimumHeight doesn't seem to carry over to
         # the actual sizeHint, so override it instead in order to make the
         # aesthetic adjustments noted above.
