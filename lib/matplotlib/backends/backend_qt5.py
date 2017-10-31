@@ -20,7 +20,7 @@ from matplotlib.backends.qt_editor.formsubplottool import UiSubplotTool
 from matplotlib.figure import Figure
 
 from .qt_compat import (
-    QtCore, QtGui, QtWidgets, _getSaveFileName, is_pyqt5, __version__, QT_API)
+    QtCore, QtGui, QtWidgets, _getSaveFileName, is_pyqt5, is_qt5, __version__, QT_API)
 
 backend_version = __version__
 
@@ -106,9 +106,9 @@ def _create_qApp():
 
     if qApp is None:
         app = QtWidgets.QApplication.instance()
-        if app is None:
+        if is_pyqt5() and app is None:
             # check for DISPLAY env variable on X11 build of Qt
-            if is_pyqt5():
+            if is_qt5():
                 try:
                     from PyQt5 import QtX11Extras
                     is_x11_build = True
@@ -126,7 +126,7 @@ def _create_qApp():
         else:
             qApp = app
 
-    if is_pyqt5():
+    if is_qt5():
         try:
             qApp.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps)
             qApp.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling)
@@ -136,7 +136,7 @@ def _create_qApp():
 
 def _allow_super_init(__init__):
     """
-    Decorator for ``__init__`` to allow ``super().__init__`` on PyQt4/PySide2.
+    Decorator for ``__init__`` to allow ``super().__init__`` on PyQt4/PySide2/PythonQt.
     """
 
     if QT_API == "PyQt5":
@@ -144,8 +144,8 @@ def _allow_super_init(__init__):
         return __init__
 
     else:
-        # To work around lack of cooperative inheritance in PyQt4, PySide,
-        # and PySide2, when calling FigureCanvasQT.__init__, we temporarily
+        # To work around lack of cooperative inheritance in PyQt4, PySide, PySide2
+        # and PythonQt, when calling FigureCanvasQT.__init__, we temporarily
         # patch QWidget.__init__ by a cooperative version, that first calls
         # QWidget.__init__ with no additional arguments, and then finds the
         # next class in the MRO with an __init__ that does support cooperative
@@ -161,7 +161,7 @@ def _allow_super_init(__init__):
             next_coop_init = next(
                 cls for cls in mro[mro.index(QtWidgets.QWidget) + 1:]
                 if cls.__module__.split(".")[0] not in [
-                    "PyQt4", "sip", "PySide", "PySide2", "Shiboken"])
+                    "PyQt4", "sip", "PySide", "PySide2", "Shiboken", "PythonQt"])
             next_coop_init.__init__(self, *args, **kwargs)
 
         @functools.wraps(__init__)
@@ -447,8 +447,16 @@ class FigureCanvasQT(QtWidgets.QWidget, FigureCanvasBase):
 class MainWindow(QtWidgets.QMainWindow):
     closing = QtCore.Signal()
 
+    def __init__(self):
+        QtGui.QMainWindow.__init__(self)
+        self._closeCallbacks = []
+
+    def connectClosing(self, callback):
+        self._closeCallbacks.append(callback)
+
     def closeEvent(self, event):
-        self.closing.emit()
+        for callback in self._closeCallbacks:
+            callback()
         QtWidgets.QMainWindow.closeEvent(self, event)
 
 
@@ -471,8 +479,9 @@ class FigureManagerQT(FigureManagerBase):
         FigureManagerBase.__init__(self, canvas, num)
         self.canvas = canvas
         self.window = MainWindow()
-        self.window.closing.connect(canvas.close_event)
-        self.window.closing.connect(self._widgetclosed)
+        self.window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
+        self.window.connectClosing(canvas.close_event)
+        self.window.connectClosing(self._widgetclosed)
 
         self.window.setWindowTitle("Figure %d" % num)
         image = os.path.join(matplotlib.rcParams['datapath'],
@@ -585,7 +594,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
     def __init__(self, canvas, parent, coordinates=True):
         """ coordinates: should we show the coordinates on the right? """
         self.canvas = canvas
-        self.parent = parent
+        self._parent = parent
         self.coordinates = coordinates
         self._actions = {}
         """A mapping of toolitem method names to their QActions"""
@@ -594,7 +603,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         NavigationToolbar2.__init__(self, canvas)
 
     def _icon(self, name):
-        if is_pyqt5():
+        if is_qt5():
             name = name.replace('.png', '_large.png')
         pm = QtGui.QPixmap(os.path.join(self.basedir, name))
         if hasattr(pm, 'setDevicePixelRatio'):
@@ -641,16 +650,16 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         # Esthetic adjustments - we need to set these explicitly in PyQt5
         # otherwise the layout looks different - but we don't want to set it if
         # not using HiDPI icons otherwise they look worse than before.
-        if is_pyqt5():
+        if is_qt5():
             self.setIconSize(QtCore.QSize(24, 24))
             self.layout().setSpacing(12)
 
-    if is_pyqt5():
+    if is_qt5():
         # For some reason, self.setMinimumHeight doesn't seem to carry over to
         # the actual sizeHint, so override it instead in order to make the
         # aesthetic adjustments noted above.
         def sizeHint(self):
-            size = super(NavigationToolbar2QT, self).sizeHint()
+            size = QtWidgets.QToolBar.sizeHint(self)
             size.setHeight(max(48, size.height()))
             return size
 
@@ -658,7 +667,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
         allaxes = self.canvas.figure.get_axes()
         if not allaxes:
             QtWidgets.QMessageBox.warning(
-                self.parent, "Error", "There are no axes to edit.")
+                self._parent, "Error", "There are no axes to edit.")
             return
         elif len(allaxes) == 1:
             axes, = allaxes
@@ -672,7 +681,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
                             type(axes).__name__, id(axes)))
                 titles.append(name)
             item, ok = QtWidgets.QInputDialog.getItem(
-                self.parent, 'Customize', 'Select axes:', titles, 0, False)
+                self._parent, 'Customize', 'Select axes:', titles, 0, False)
             if ok:
                 axes = allaxes[titles.index(six.text_type(item))]
             else:
@@ -714,7 +723,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
     def configure_subplots(self):
         image = os.path.join(matplotlib.rcParams['datapath'],
                              'images', 'matplotlib.png')
-        dia = SubplotToolQt(self.canvas.figure, self.parent)
+        dia = SubplotToolQt(self.canvas.figure, self._parent)
         dia.setWindowIcon(QtGui.QIcon(image))
         dia.exec_()
 
@@ -736,7 +745,7 @@ class NavigationToolbar2QT(NavigationToolbar2, QtWidgets.QToolBar):
             filters.append(filter)
         filters = ';;'.join(filters)
 
-        fname, filter = _getSaveFileName(self.parent,
+        fname, filter = _getSaveFileName(self._parent,
                                          "Choose a filename to save to",
                                          start, filters, selectedFilter)
         if fname:

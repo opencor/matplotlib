@@ -74,8 +74,9 @@ class ColorButton(QtWidgets.QPushButton):
 
     def choose_color(self):
         color = QtWidgets.QColorDialog.getColor(
-            self._color, self.parentWidget(), "",
-            QtWidgets.QColorDialog.ShowAlphaChannel)
+            self._color, self.parentWidget(), "")
+        ## PythonQt doesn't support QColorDialog.ColorDialogOptions
+        ##    QtWidgets.QColorDialog.ShowAlphaChannel)
         if color.isValid():
             self.set_color(color)
 
@@ -207,7 +208,7 @@ class FontLayout(QtWidgets.QGridLayout):
 
 def is_edit_valid(edit):
     text = edit.text()
-    state = edit.validator().validate(text, 0)[0]
+    state = edit.validator().validate(text, 0)
 
     return state == QtGui.QDoubleValidator.Acceptable
 

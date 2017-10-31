@@ -54,3 +54,9 @@ class UiSubplotTool(QtWidgets.QDialog):
             right.addWidget(widget)
 
         self._widgets["Close"].setFocus()
+
+    def accept(self):
+        QtWidgets.QDialog.accept(self)
+
+    def close(self):
+        QtWidgets.QDialog.close(self)

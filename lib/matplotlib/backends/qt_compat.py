@@ -15,9 +15,11 @@ QT_API_PYQTv2 = 'PyQt4v2'   # forced to Version 2 API
 QT_API_PYSIDE = 'PySide'    # only supports Version 2 API
 QT_API_PYQT5 = 'PyQt5'      # use PyQt5 API; Version 2 with module shim
 QT_API_PYSIDE2 = 'PySide2'  # Version 2 API with module shim
+QT_API_PYTHONQT = 'PythonQt' # use PythonQt API for Qt5
 
 ETS = dict(pyqt=(QT_API_PYQTv2, 4), pyside=(QT_API_PYSIDE, 4),
-           pyqt5=(QT_API_PYQT5, 5), pyside2=(QT_API_PYSIDE2, 5))
+           pyqt5=(QT_API_PYQT5, 5), pyside2=(QT_API_PYSIDE2, 5),
+           pythonqt=(QT_API_PYTHONQT, 5))
 # ETS is a dict of env variable to (QT_API, QT_MAJOR_VERSION)
 # If the ETS QT_API environment variable is set, use it, but only
 # if the varible if of the same major QT version.  Note that
@@ -63,14 +65,18 @@ if 'PyQt5' in sys.modules:
     # the user has imported PyQt5 before importing mpl
     QT_API = QT_API_PYQT5
 
+if 'PythonQt' in sys.modules:
+    # the user has imported PyQt5 before importing mpl
+    QT_API = QT_API_PYTHONQT
+
 if (QT_API_ENV is not None) and QT_API is None:
     try:
         QT_ENV_MAJOR_VERSION = ETS[QT_API_ENV][1]
     except KeyError:
         raise RuntimeError(
             ('Unrecognized environment variable %r, valid values are:'
-             ' %r, %r, %r or %r'
-             % (QT_API_ENV, 'pyqt', 'pyside', 'pyqt5', 'pyside2')))
+             ' %r, %r, %r, %r or %r'
+             % (QT_API_ENV, 'pyqt', 'pyside', 'pyqt5', 'pyside2', 'pythonqt')))
     if QT_ENV_MAJOR_VERSION == QT_RC_MAJOR_VERSION:
         # Only if backend and env qt major version are
         # compatible use the env variable.
@@ -207,9 +213,32 @@ if QT_API == QT_API_PYSIDE:  # try importing pyside
 
     _getSaveFileName = QtGui.QFileDialog.getSaveFileName
 
+elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
+    from PythonQt import QtCore, QtGui
+    __version__ = "3.2"
+    __version_info__ = "-"
+
+    # PythonQt does not yet support a getSaveFileName variant returning the selected filter
+    def _getSaveFileName(*args, **kwargs):
+        return (QtGui.QFileDialog.getSaveFileName(*args, **kwargs), None)
+
+    # Provide color getters
+    def getHslF(c):
+        return (c.hslHueF(), c.hslSaturationF(), c.lightnessF(), c.alphaF())
+
+    def getHsvF(c):
+        return (c.hueF(), c.saturationF(), c.valueF(), c.alphaF())
+
+    def getRgbF(c):
+        return (c.redF(), c.greenF(), c.blueF(), c.alphaF())
+
+    QtGui.QColor.getHslF = getHslF
+    QtGui.QColor.getHsvF = getHsvF
+    QtGui.QColor.getRgbF = getRgbF
+
 
 # Apply shim to Qt4 APIs to make them look like Qt5
-if QT_API in (QT_API_PYQT, QT_API_PYQTv2, QT_API_PYSIDE):
+if QT_API in (QT_API_PYQT, QT_API_PYQTv2, QT_API_PYSIDE, QT_API_PYTHONQT):
     '''Import all used QtGui objects into QtWidgets
 
     Here I've opted to simple copy QtGui into QtWidgets as that
@@ -219,6 +248,9 @@ if QT_API in (QT_API_PYQT, QT_API_PYQTv2, QT_API_PYSIDE):
     '''
     QtWidgets = QtGui
 
+
+def is_qt5():
+    return QT_API in [QT_API_PYQT5, QT_API_PYTHONQT]
 
 def is_pyqt5():
     return QT_API == QT_API_PYQT5
