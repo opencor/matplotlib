@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 from numpy.testing import assert_almost_equal
 import numpy as np
@@ -79,6 +78,26 @@ class TestAutoMinorLocator(object):
                                0.5, 0.55, 0.65, 0.7, 0.75, 0.85, 0.9,
                                0.95, 1, 1.05, 1.1, 1.15, 1.25, 1.3, 1.35])
         assert_almost_equal(ax.xaxis.get_ticklocs(minor=True), test_value)
+
+    # NB: the following values are assuming that *xlim* is [0, 5]
+    params = [
+        (0, 0),  # no major tick => no minor tick either
+        (1, 0),  # a single major tick => no minor tick
+        (2, 4),  # 1 "nice" major step => 1*5 minor **divisions**
+        (3, 6)   # 2 "not nice" major steps => 2*4 minor **divisions**
+    ]
+
+    @pytest.mark.parametrize('nb_majorticks, expected_nb_minorticks', params)
+    def test_low_number_of_majorticks(
+            self, nb_majorticks, expected_nb_minorticks):
+        # This test is related to issue #8804
+        fig, ax = plt.subplots()
+        xlims = (0, 5)  # easier to test the different code paths
+        ax.set_xlim(*xlims)
+        ax.set_xticks(np.linspace(xlims[0], xlims[1], nb_majorticks))
+        ax.minorticks_on()
+        ax.xaxis.set_minor_locator(mticker.AutoMinorLocator())
+        assert len(ax.xaxis.get_minorticklocs()) == expected_nb_minorticks
 
 
 class TestLogLocator(object):
@@ -559,7 +578,7 @@ class TestEngFormatter(object):
         (-0.0, ('0', '0', '0.00')),
         (-0, ('0', '0', '0.00')),
         (0, ('0', '0', '0.00')),
-        (1.23456789e-6, ('1.23457 \u03bc', '1 \u03bc', '1.23 \u03bc')),
+        (1.23456789e-6, (u'1.23457 \u03bc', u'1 \u03bc', u'1.23 \u03bc')),
         (0.123456789, ('123.457 m', '123 m', '123.46 m')),
         (0.1, ('100 m', '100 m', '100.00 m')),
         (1, ('1', '1', '1.00')),

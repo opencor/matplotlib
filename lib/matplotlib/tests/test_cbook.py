@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 import itertools
 import pickle
 from weakref import ref
@@ -29,16 +28,18 @@ def test_is_hashable():
 
 def test_restrict_dict():
     d = {'foo': 'bar', 1: 2}
-    d1 = cbook.restrict_dict(d, ['foo', 1])
-    assert d1 == d
-    d2 = cbook.restrict_dict(d, ['bar', 2])
-    assert d2 == {}
-    d3 = cbook.restrict_dict(d, {'foo': 1})
-    assert d3 == {'foo': 'bar'}
-    d4 = cbook.restrict_dict(d, {})
-    assert d4 == {}
-    d5 = cbook.restrict_dict(d, {'foo', 2})
-    assert d5 == {'foo': 'bar'}
+    with pytest.warns(cbook.deprecation.MatplotlibDeprecationWarning) as rec:
+        d1 = cbook.restrict_dict(d, ['foo', 1])
+        assert d1 == d
+        d2 = cbook.restrict_dict(d, ['bar', 2])
+        assert d2 == {}
+        d3 = cbook.restrict_dict(d, {'foo': 1})
+        assert d3 == {'foo': 'bar'}
+        d4 = cbook.restrict_dict(d, {})
+        assert d4 == {}
+        d5 = cbook.restrict_dict(d, {'foo', 2})
+        assert d5 == {'foo': 'bar'}
+    assert len(rec) == 5
     # check that d was not modified
     assert d == {'foo': 'bar', 1: 2}
 
@@ -390,6 +391,11 @@ def test_to_prestep():
     assert_array_equal(y1_target, y1s)
 
 
+def test_to_prestep_empty():
+    steps = cbook.pts_to_prestep([], [])
+    assert steps.shape == (2, 0)
+
+
 def test_to_poststep():
     x = np.arange(4)
     y1 = np.arange(4)
@@ -410,6 +416,11 @@ def test_to_poststep():
     assert_array_equal(y1_target, y1s)
 
 
+def test_to_poststep_empty():
+    steps = cbook.pts_to_poststep([], [])
+    assert steps.shape == (2, 0)
+
+
 def test_to_midstep():
     x = np.arange(4)
     y1 = np.arange(4)
@@ -428,6 +439,11 @@ def test_to_midstep():
     xs, y1s = cbook.pts_to_midstep(x, y1)
     assert_array_equal(x_target, xs)
     assert_array_equal(y1_target, y1s)
+
+
+def test_to_midstep_empty():
+    steps = cbook.pts_to_midstep([], [])
+    assert steps.shape == (2, 0)
 
 
 @pytest.mark.parametrize(

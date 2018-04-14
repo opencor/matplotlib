@@ -1,37 +1,30 @@
 """
 Classes for including text in a figure.
 """
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 import six
 from six.moves import zip
 
+import contextlib
+import logging
 import math
 import warnings
 import weakref
 
-import contextlib
-
 import numpy as np
 
-from matplotlib import cbook
-from matplotlib import rcParams
-import matplotlib.artist as artist
-from matplotlib.artist import Artist
-from matplotlib.cbook import maxdict
-from matplotlib import docstring
-from matplotlib.font_manager import FontProperties
-from matplotlib.patches import FancyBboxPatch
-from matplotlib.patches import FancyArrowPatch, Rectangle
-import matplotlib.transforms as mtransforms
-from matplotlib.transforms import Affine2D, Bbox, Transform
-from matplotlib.transforms import BboxBase, BboxTransformTo
-from matplotlib.lines import Line2D
-from matplotlib.path import Path
-from matplotlib.artist import allow_rasterization
+from . import artist, cbook, docstring, rcParams
+from .artist import Artist
+from .font_manager import FontProperties
+from .lines import Line2D
+from .patches import FancyArrowPatch, FancyBboxPatch, Rectangle
+from .textpath import TextPath  # Unused, but imported by others.
+from .transforms import (
+    Affine2D, Bbox, BboxBase, BboxTransformTo, IdentityTransform, Transform)
 
-from matplotlib.textpath import TextPath
+
+_log = logging.getLogger(__name__)
 
 
 def _process_text_args(override, fontdict=None, **kwargs):
@@ -46,8 +39,7 @@ def _process_text_args(override, fontdict=None, **kwargs):
 
 @contextlib.contextmanager
 def _wrap_text(textobj):
-    """
-    Temporarily inserts newlines to the text if the wrap option is enabled.
+    """Temporarily inserts newlines to the text if the wrap option is enabled.
     """
     if textobj.get_wrap():
         old_text = textobj.get_text()
@@ -82,62 +74,6 @@ def get_rotation(rotation):
                              "None".format(rotation))
 
     return angle % 360
-# these are not available for the object inspector until after the
-# class is build so we define an initial set here for the init
-# function and they will be overridden after object defn
-docstring.interpd.update(Text="""
-    ========================== ================================================
-    Property                   Value
-    ========================== ================================================
-    alpha                      float or None
-    animated                   [True | False]
-    backgroundcolor            any matplotlib color
-    bbox                       rectangle prop dict plus key 'pad' which is a
-                               pad in points; if a boxstyle is supplied as
-                               a string, then pad is instead a fraction
-                               of the font size
-    clip_box                   a matplotlib.transform.Bbox instance
-    clip_on                    [True | False]
-    color                      any matplotlib color
-    family                     ['serif' | 'sans-serif' | 'cursive' |
-                                'fantasy' | 'monospace']
-    figure                     a matplotlib.figure.Figure instance
-    fontproperties             a matplotlib.font_manager.FontProperties
-                               instance
-    horizontalalignment or ha  ['center' | 'right' | 'left']
-    label                      any string
-    linespacing                float
-    lod                        [True | False]
-    multialignment             ['left' | 'right' | 'center' ]
-    name or fontname           string e.g.,
-                               ['Sans' | 'Courier' | 'Helvetica' ...]
-    position                   (x,y)
-    rotation                   [ angle in degrees 'vertical' | 'horizontal'
-    rotation_mode              [ None | 'anchor']
-    size or fontsize           [size in points | relative size e.g., 'smaller',
-                                                                  'x-large']
-    style or fontstyle         [ 'normal' | 'italic' | 'oblique']
-    text                       string
-    transform                  a matplotlib.transform transformation instance
-    usetex                     [True | False | None]
-    variant                    ['normal' | 'small-caps']
-    verticalalignment or va    ['center' | 'top' | 'bottom' | 'baseline' |
-                                'center_baseline' ]
-    visible                    [True | False]
-    weight or fontweight       ['normal' | 'bold' | 'heavy' | 'light' |
-                                'ultrabold' | 'ultralight']
-    wrap                       [True | False]
-    x                          float
-    y                          float
-    zorder                     any number
-    ========================== ===============================================
-    """)
-
-# TODO : This function may move into the Text class as a method. As a
-# matter of fact, The information from the _get_textbox function
-# should be available during the Text._get_layout() call, which is
-# called within the _get_textbox. So, it would better to move this
-# function as a method with some refactoring of _get_layout method.
 
 
 def _get_textbox(text, renderer):
@@ -146,12 +82,17 @@ def _get_textbox(text, renderer):
     :meth:`matplotlib.text.Text.get_extents` method, The bbox size of
     the text before the rotation is calculated.
     """
+    # TODO : This function may move into the Text class as a method. As a
+    # matter of fact, The information from the _get_textbox function
+    # should be available during the Text._get_layout() call, which is
+    # called within the _get_textbox. So, it would better to move this
+    # function as a method with some refactoring of _get_layout method.
 
     projected_xs = []
     projected_ys = []
 
     theta = np.deg2rad(text.get_rotation())
-    tr = mtransforms.Affine2D().rotate(-theta)
+    tr = Affine2D().rotate(-theta)
 
     _, parts, d = text._get_layout(renderer)
 
@@ -168,7 +109,7 @@ def _get_textbox(text, renderer):
     xt_box, yt_box = min(projected_xs), min(projected_ys)
     w_box, h_box = max(projected_xs) - xt_box, max(projected_ys) - yt_box
 
-    tr = mtransforms.Affine2D().rotate(theta)
+    tr = Affine2D().rotate(theta)
 
     x_box, y_box = tr.transform_point((xt_box, yt_box))
 
@@ -180,7 +121,7 @@ class Text(Artist):
     Handle storing and drawing of text in window or data coordinates.
     """
     zorder = 3
-    _cached = maxdict(50)
+    _cached = cbook.maxdict(50)
 
     def __repr__(self):
         return "Text(%g,%g,%s)" % (self._x, self._y, repr(self._text))
@@ -298,11 +239,16 @@ class Text(Artist):
 
     def set_rotation_mode(self, m):
         """
-        set text rotation mode. If "anchor", the un-rotated text
-        will first aligned according to their *ha* and
-        *va*, and then will be rotated with the alignement
-        reference point as a origin. If None (default), the text will be
-        rotated first then will be aligned.
+        Set text rotation mode.
+
+        .. ACCEPTS: [ None | "default" | "anchor" ]
+
+        Parameters
+        ----------
+        m : ``None`` or ``"default"`` or ``"anchor"``
+            If ``None`` or ``"default"``, the text will be first rotated, then
+            aligned according to their horizontal and vertical alignments.  If
+            ``"anchor"``, then alignment occurs before rotation.
         """
         if m is None or m in ["anchor", "default"]:
             self._rotation_mode = m
@@ -518,7 +464,7 @@ class Text(Artist):
                                     1., 1.,
                                     boxstyle=boxstyle,
                                     bbox_transmuter=bbox_transmuter,
-                                    transform=mtransforms.IdentityTransform(),
+                                    transform=IdentityTransform(),
                                     **props)
         else:
             self._bbox_patch = None
@@ -553,7 +499,7 @@ class Text(Artist):
             x_box, y_box, w_box, h_box = _get_textbox(self, renderer)
             self._bbox_patch.set_bounds(0., 0., w_box, h_box)
             theta = np.deg2rad(self.get_rotation())
-            tr = mtransforms.Affine2D().rotate(theta)
+            tr = Affine2D().rotate(theta)
             tr = tr.translate(posx + x_box, posy + y_box)
             self._bbox_patch.set_transform(tr)
             fontsize_in_pixel = renderer.points_to_pixels(self.get_size())
@@ -568,7 +514,7 @@ class Text(Artist):
         x_box, y_box, w_box, h_box = _get_textbox(self, renderer)
         self._bbox_patch.set_bounds(0., 0., w_box, h_box)
         theta = np.deg2rad(self.get_rotation())
-        tr = mtransforms.Affine2D().rotate(theta)
+        tr = Affine2D().rotate(theta)
         tr = tr.translate(posx + x_box, posy + y_box)
         self._bbox_patch.set_transform(tr)
         fontsize_in_pixel = renderer.points_to_pixels(self.get_size())
@@ -620,23 +566,28 @@ class Text(Artist):
         """
         Set whether artist uses clipping.
 
-        When False artists will be visible out side of the axes which
-        can lead to unexpected results.
+        When False, artists will be visible outside of the axes, which can lead
+        to unexpected results.
 
-        ACCEPTS: [True | False]
+        Parameters
+        ----------
+        b : bool
+            .. ACCEPTS: bool
         """
         super(Text, self).set_clip_on(b)
         self._update_clip_properties()
 
     def get_wrap(self):
-        """
-        Returns the wrapping state for the text.
-        """
+        """Returns the wrapping state for the text."""
         return self._wrap
 
     def set_wrap(self, wrap):
-        """
-        Sets the wrapping state for the text.
+        """Sets the wrapping state for the text.
+
+        Parameters
+        ----------
+        wrap : bool
+            .. ACCEPTS: bool
         """
         self._wrap = wrap
 
@@ -737,7 +688,7 @@ class Text(Artist):
 
         return wrapped_str + line
 
-    @allow_rasterization
+    @artist.allow_rasterization
     def draw(self, renderer):
         """
         Draws the :class:`Text` object to the given *renderer*.
@@ -759,9 +710,10 @@ class Text(Artist):
             # position in Text, and dash position in TextWithDash:
             posx = float(textobj.convert_xunits(textobj._x))
             posy = float(textobj.convert_yunits(textobj._y))
-            if not np.isfinite(posx) or not np.isfinite(posy):
-                raise ValueError("posx and posy should be finite values")
             posx, posy = trans.transform_point((posx, posy))
+            if not np.isfinite(posx) or not np.isfinite(posy):
+                _log.warning("posx and posy should be finite values")
+                return
             canvasw, canvash = renderer.get_canvas_width_height()
 
             # draw the FancyBboxPatch
@@ -888,7 +840,7 @@ class Text(Artist):
     def get_unitless_position(self):
         "Return the unitless position of the text as a tuple (*x*, *y*)"
         # This will get the position with all unit information stripped away.
-        # This is here for convienience since it is done in several locations.
+        # This is here for convenience since it is done in several locations.
         x = float(self.convert_xunits(self._x))
         y = float(self.convert_yunits(self._y))
         return x, y
@@ -1026,7 +978,7 @@ class Text(Artist):
         self.stale = True
 
     def set_ma(self, align):
-        'alias for set_verticalalignment'
+        'alias for set_multialignment'
         self.set_multialignment(align)
 
     def set_multialignment(self, align):
@@ -1256,10 +1208,13 @@ class Text(Artist):
 
     def set_usetex(self, usetex):
         """
-        Set this `Text` object to render using TeX (or not).
+        Parameters
+        ----------
+        usetex : bool or None
+            Whether to render using TeX, ``None`` means to use
+            :rc:`text.usetex`.
 
-        If `None` is given, the option will be reset to use the value of
-        `rcParams['text.usetex']`
+            .. ACCEPTS: bool or None
         """
         if usetex is None:
             self._usetex = rcParams['text.usetex']
@@ -1269,10 +1224,10 @@ class Text(Artist):
 
     def get_usetex(self):
         """
-        Return whether this `Text` object will render using TeX.
+        Return whether this `Text` object uses TeX for rendering.
 
-        If the user has not manually set this value, it will default to
-        the value of `rcParams['text.usetex']`
+        If the user has not manually set this value, it defaults to
+        :rc:`text.usetex`.
         """
         if self._usetex is None:
             return rcParams['text.usetex']
@@ -1388,7 +1343,7 @@ class TextWithDash(Text):
     def get_unitless_position(self):
         "Return the unitless position of the text as a tuple (*x*, *y*)"
         # This will get the position with all unit information stripped away.
-        # This is here for convienience since it is done in several locations.
+        # This is here for convenience since it is done in several locations.
         x = float(self.convert_xunits(self._dashx))
         y = float(self.convert_yunits(self._dashy))
         return x, y
@@ -2286,7 +2241,7 @@ class Annotation(Text, _AnnotationBase):
 
             # The arrow will be drawn from (ox0, oy0) to (ox1,
             # oy1). It will be first clipped by patchA and patchB.
-            # Then it will be shrunk by shirnkA and shrinkB
+            # Then it will be shrunk by shrinkA and shrinkB
             # (in points). If patch A is not set, self.bbox_patch
             # is used.
 
@@ -2313,12 +2268,12 @@ class Annotation(Text, _AnnotationBase):
                                   width=w,
                                   height=h,
                                   )
-                    r.set_transform(mtransforms.IdentityTransform())
+                    r.set_transform(IdentityTransform())
                     r.set_clip_on(False)
 
                     self.arrow_patch.set_patchA(r)
 
-    @allow_rasterization
+    @artist.allow_rasterization
     def draw(self, renderer):
         """
         Draw the :class:`Annotation` object to the given *renderer*.

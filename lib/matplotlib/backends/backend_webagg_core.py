@@ -15,19 +15,17 @@ from __future__ import (absolute_import, division, print_function,
 
 import six
 
+import datetime
 import io
 import json
 import os
-import time
 import warnings
 
 import numpy as np
 import tornado
-import datetime
 
 from matplotlib.backends import backend_agg
 from matplotlib.backend_bases import _Backend
-from matplotlib.figure import Figure
 from matplotlib import backend_bases
 from matplotlib import _png
 
@@ -468,7 +466,7 @@ class FigureManagerWebAgg(backend_bases.FigureManagerBase):
 
         with io.open(os.path.join(
                 os.path.dirname(__file__),
-                "web_backend",
+                "web_backend", "js",
                 "mpl.js"), encoding='utf8') as fd:
             output.write(fd.read())
 

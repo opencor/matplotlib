@@ -362,7 +362,7 @@ static void close_file_callback(FT_Stream stream)
     PyFT2Font *def = (PyFT2Font *)stream->descriptor.pointer;
 
     if (mpl_PyFile_DupClose(def->py_file, def->fp, def->offset)) {
-        throw "Couldn't close file";
+        throw std::runtime_error("Couldn't close file");
     }
 
     if (def->close_file) {
@@ -485,7 +485,7 @@ const char *PyFT2Font_init__doc__ =
     "  style_flags            style flags  (int type); see the ft2font constants\n"
     "  num_glyphs             number of glyphs in the face\n"
     "  family_name            face family name\n"
-    "  style_name             face syle name\n"
+    "  style_name             face style name\n"
     "  num_fixed_sizes        number of bitmap in the face\n"
     "  scalable               face is scalable\n"
     "\n"

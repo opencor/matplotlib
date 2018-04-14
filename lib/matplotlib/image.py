@@ -13,6 +13,7 @@ from io import BytesIO
 
 from math import ceil
 import os
+import logging
 
 import numpy as np
 
@@ -33,6 +34,8 @@ from matplotlib._image import *
 
 from matplotlib.transforms import (Affine2D, BboxBase, Bbox, BboxTransform,
                                    IdentityTransform, TransformedBbox)
+
+_log = logging.getLogger(__name__)
 
 # map interpolation strings to module constants
 _interpd_ = {
@@ -180,15 +183,18 @@ def _rgb_to_rgba(A):
 class _ImageBase(martist.Artist, cm.ScalarMappable):
     zorder = 0
 
+    @property
     @cbook.deprecated("2.1")
     def _interpd(self):
         return _interpd_
 
+    @property
     @cbook.deprecated("2.1")
     def _interpdr(self):
         return {v: k for k, v in six.iteritems(_interpd_)}
 
-    @cbook.deprecated("2.1")
+    @property
+    @cbook.deprecated("2.1", alternative="mpl.image.interpolation_names")
     def iterpnames(self):
         return interpolations_names
 
@@ -361,14 +367,26 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
 
                 # TODO slice input array first
                 inp_dtype = A.dtype
+                a_min = A.min()
+                a_max = A.max()
+                # figure out the type we should scale to.  For floats,
+                # leave as is.  For integers cast to an appropriate-sized
+                # float.  Small integers get smaller floats in an attempt
+                # to keep the memory footprint reasonable.
+                if a_min is np.ma.masked:
+                    # all masked, so values don't matter
+                    a_min, a_max = np.int32(0), np.int32(1)
                 if inp_dtype.kind == 'f':
                     scaled_dtype = A.dtype
                 else:
-                    scaled_dtype = np.float32
-                # old versions of numpy do not work with `np.nammin`
-                # and `np.nanmax` as inputs
-                a_min = np.ma.min(A).astype(scaled_dtype)
-                a_max = np.ma.max(A).astype(scaled_dtype)
+                    # probably an integer of some type.
+                    da = a_max.astype(np.float64) - a_min.astype(np.float64)
+                    if da > 1e8:
+                        # give more breathing room if a big dynamic range
+                        scaled_dtype = np.float64
+                    else:
+                        scaled_dtype = np.float32
+
                 # scale the input data to [.1, .9].  The Agg
                 # interpolators clip to [0, 1] internally, use a
                 # smaller input scale to identify which of the
@@ -378,7 +396,34 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
                 # scaled data
                 A_scaled = np.empty(A.shape, dtype=scaled_dtype)
                 A_scaled[:] = A
+                # clip scaled data around norm if necessary.
+                # This is necessary for big numbers at the edge of
+                # float64's ability to represent changes.  Applying
+                # a norm first would be good, but ruins the interpolation
+                # of over numbers.
+                if self.norm.vmin is not None and self.norm.vmax is not None:
+                    dv = (np.float64(self.norm.vmax) -
+                            np.float64(self.norm.vmin))
+                    vmid = self.norm.vmin + dv / 2
+                    newmin = vmid - dv * 1.e7
+                    if newmin < a_min:
+                        newmin = None
+                    else:
+                        a_min = np.float64(newmin)
+                    newmax = vmid + dv * 1.e7
+                    if newmax > a_max:
+                        newmax = None
+                    else:
+                        a_max = np.float64(newmax)
+                    if newmax is not None or newmin is not None:
+                        A_scaled = np.clip(A_scaled, newmin, newmax)
+
                 A_scaled -= a_min
+                # a_min and a_max might be ndarray subclasses so use
+                # asscalar to ensure they are scalars to avoid errors
+                a_min = np.asscalar(a_min.astype(scaled_dtype))
+                a_max = np.asscalar(a_max.astype(scaled_dtype))
+
                 if a_min != a_max:
                     A_scaled /= ((a_max - a_min) / 0.8)
                 A_scaled += 0.1
@@ -591,7 +636,11 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
         """
         # check if data is PIL Image without importing Image
         if hasattr(A, 'getpixel'):
-            self._A = pil_to_array(A)
+            if A.mode == 'L':
+                # greyscale image, but our logic assumes rgba:
+                self._A = pil_to_array(A.convert('RGBA'))
+            else:
+                self._A = pil_to_array(A)
         else:
             self._A = cbook.safe_masked_invalid(A, copy=True)
 
@@ -603,6 +652,23 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
                 or self._A.ndim == 3 and self._A.shape[-1] in [3, 4]):
             raise TypeError("Invalid dimensions for image data")
 
+        if self._A.ndim == 3:
+            # If the input data has values outside the valid range (after
+            # normalisation), we issue a warning and then clip X to the bounds
+            # - otherwise casting wraps extreme values, hiding outliers and
+            # making reliable interpretation impossible.
+            high = 255 if np.issubdtype(self._A.dtype, np.integer) else 1
+            if self._A.min() < 0 or high < self._A.max():
+                _log.warning(
+                    'Clipping input data to the valid range for imshow with '
+                    'RGB data ([0..1] for floats or [0..255] for integers).'
+                )
+                self._A = np.clip(self._A, 0, high)
+            # Cast unsupported integer types to uint8
+            if self._A.dtype != np.uint8 and np.issubdtype(self._A.dtype,
+                                                           np.integer):
+                self._A = self._A.astype(np.uint8)
+
         self._imcache = None
         self._rgbacache = None
         self.stale = True
@@ -611,7 +677,8 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
         """
         Retained for backwards compatibility - use set_data instead
 
-        ACCEPTS: numpy array A or PIL Image"""
+        ACCEPTS: numpy array A or PIL Image
+        """
         # This also needs to be here to override the inherited
         # cm.ScalarMappable.set_array method so it is not invoked
         # by mistake.
@@ -638,10 +705,10 @@ class _ImageBase(martist.Artist, cm.ScalarMappable):
         agg, ps and pdf backends and will fall back to 'nearest' mode
         for other backends.
 
-        ACCEPTS: ['nearest' | 'bilinear' | 'bicubic' | 'spline16' |
-          'spline36' | 'hanning' | 'hamming' | 'hermite' | 'kaiser' |
-          'quadric' | 'catrom' | 'gaussian' | 'bessel' | 'mitchell' |
-          'sinc' | 'lanczos' | 'none' |]
+        .. ACCEPTS: ['nearest' | 'bilinear' | 'bicubic' | 'spline16' |
+           'spline36' | 'hanning' | 'hamming' | 'hermite' | 'kaiser' |
+           'quadric' | 'catrom' | 'gaussian' | 'bessel' | 'mitchell' |
+           'sinc' | 'lanczos' | 'none' ]
 
         """
         if s is None:
@@ -822,7 +889,10 @@ class AxesImage(_ImageBase):
         array_extent = Bbox([[0, 0], arr.shape[:2]])
         trans = BboxTransform(boxin=data_extent, boxout=array_extent)
         y, x = event.ydata, event.xdata
-        i, j = trans.transform_point([y, x]).astype(int)
+        point = trans.transform_point([y, x])
+        if any(np.isnan(point)):
+            return None
+        i, j = point.astype(int)
         # Clip the coordinates at array bounds
         if not (0 <= i < arr.shape[0]) or not (0 <= j < arr.shape[1]):
             return None
@@ -920,6 +990,12 @@ class NonUniformImage(AxesImage):
         raise NotImplementedError('Method not supported')
 
     def set_interpolation(self, s):
+        """
+        Parameters
+        ----------
+        s : str, None
+            Either 'nearest', 'bilinear', or ``None``.
+        """
         if s is not None and s not in ('nearest', 'bilinear'):
             raise NotImplementedError('Only nearest neighbor and '
                                       'bilinear interpolations are supported')
@@ -1338,11 +1414,12 @@ def imsave(fname, arr, vmin=None, vmax=None, cmap=None, format=None,
     """
     from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
     from matplotlib.figure import Figure
-
-    # Fast path for saving to PNG
-    if (format == 'png' or format is None or
-            isinstance(fname, six.string_types) and
-            fname.lower().endswith('.png')):
+    if isinstance(fname, getattr(os, "PathLike", ())):
+        fname = os.fspath(fname)
+    if (format == 'png'
+        or (format is None
+            and isinstance(fname, six.string_types)
+            and fname.lower().endswith('.png'))):
         image = AxesImage(None, cmap=cmap, origin=origin)
         image.set_data(arr)
         image.set_clim(vmin, vmax)
@@ -1428,8 +1505,8 @@ def thumbnail(infile, thumbfile, scale=0.1, interpolation='bilinear',
     # need it for the mpl API
     dpi = 100
 
-    height = float(rows)/dpi*scale
-    width = float(cols)/dpi*scale
+    height = rows / dpi * scale
+    width = cols / dpi * scale
 
     extension = extout.lower()
 

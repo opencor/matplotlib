@@ -46,25 +46,16 @@ import os
 import sys
 import time
 import warnings
+from weakref import WeakKeyDictionary
 
 import numpy as np
-import matplotlib.cbook as cbook
-import matplotlib.colors as colors
-import matplotlib.transforms as transforms
-import matplotlib.widgets as widgets
-from matplotlib import rcParams
-from matplotlib import is_interactive
-from matplotlib import get_backend
-from matplotlib import lines
+
+from matplotlib import (
+    backend_tools as tools, cbook, colors, textpath, tight_bbox, transforms,
+    widgets, get_backend, is_interactive, rcParams)
 from matplotlib._pylab_helpers import Gcf
-
 from matplotlib.transforms import Bbox, TransformedBbox, Affine2D
-
-import matplotlib.tight_bbox as tight_bbox
-import matplotlib.textpath as textpath
 from matplotlib.path import Path
-from matplotlib.cbook import mplDeprecation, warn_deprecated
-import matplotlib.backend_tools as tools
 
 try:
     from PIL import Image
@@ -1056,11 +1047,10 @@ class GraphicsContextBase(object):
         Set the clip path and transformation.  Path should be a
         :class:`~matplotlib.transforms.TransformedPath` instance.
         """
-        if path is not None and not isinstance(path,
-                transforms.TransformedPath):
-            msg = ("Path should be a matplotlib.transforms.TransformedPath"
-                   "instance.")
-            raise ValueError(msg)
+        if (path is not None
+                and not isinstance(path, transforms.TransformedPath)):
+            raise ValueError("Path should be a "
+                             "matplotlib.transforms.TransformedPath instance")
         self._clippath = path
 
     def set_dashes(self, dash_offset, dash_list):
@@ -1080,7 +1070,8 @@ class GraphicsContextBase(object):
         if dash_list is not None:
             dl = np.asarray(dash_list)
             if np.any(dl < 0.0):
-                raise ValueError("All values in the dash list must be positive")
+                raise ValueError(
+                    "All values in the dash list must be positive")
         self._dashes = dash_offset, dash_list
 
     def set_foreground(self, fg, isRGBA=False):
@@ -1277,10 +1268,10 @@ class TimerBase(object):
         Boolean flag indicating whether this timer should operate as single
         shot (run once and then stop). Defaults to `False`.
 
-    callbacks : list
-        Stores list of (func, args) tuples that will be called upon timer
-        events. This list can be manipulated directly, or the functions
-        `add_callback` and `remove_callback` can be used.
+    callbacks : List[Tuple[callable, Tuple, Dict]]
+        Stores list of (func, args, kwargs) tuples that will be called upon
+        timer events. This list can be manipulated directly, or the
+        functions `add_callback` and `remove_callback` can be used.
 
     '''
     def __init__(self, interval=None, callbacks=None):
@@ -1380,9 +1371,12 @@ class TimerBase(object):
         '''
         for func, args, kwargs in self.callbacks:
             ret = func(*args, **kwargs)
-            # docstring above explains why we use `if ret == False` here,
+            # docstring above explains why we use `if ret == 0` here,
             # instead of `if not ret`.
-            if ret == False:
+            # This will also catch `ret == False` as `False == 0`
+            # but does not annoy the linters
+            # https://docs.python.org/3/library/stdtypes.html#boolean-values
+            if ret == 0:
                 self.callbacks.remove((func, args, kwargs))
 
         if len(self.callbacks) == 0:
@@ -1424,6 +1418,16 @@ class IdleEvent(Event):
 class DrawEvent(Event):
     """
     An event triggered by a draw operation on the canvas
+
+    In most backends callbacks subscribed to this callback will be
+    fired after the rendering is complete but before the screen is
+    updated.  Any extra artists drawn to the canvas's renderer will
+    be reflected without an explicit call to ``blit``.
+
+    .. warning ::
+
+       Calling ``canvas.draw`` and ``canvas.blit`` in these callbacks may
+       not be safe with all backends and may cause infinite recursion.
 
     In addition to the :class:`Event` attributes, the following event
     attributes are defined:
@@ -1527,22 +1531,19 @@ class LocationEvent(Event):
         else:
             axes_list = [self.canvas.mouse_grabber]
 
-        if axes_list:  # Use highest zorder.
-            self.inaxes = max(axes_list, key=lambda x: x.zorder)
-        else:  # None found.
-            self.inaxes = None
-            self._update_enter_leave()
-            return
-
-        try:
-            trans = self.inaxes.transData.inverted()
-            xdata, ydata = trans.transform_point((x, y))
-        except ValueError:
-            self.xdata = None
-            self.ydata = None
+        if axes_list:
+            self.inaxes = cbook._topmost_artist(axes_list)
+            try:
+                trans = self.inaxes.transData.inverted()
+                xdata, ydata = trans.transform_point((x, y))
+            except ValueError:
+                self.xdata = None
+                self.ydata = None
+            else:
+                self.xdata = xdata
+                self.ydata = ydata
         else:
-            self.xdata = xdata
-            self.ydata = ydata
+            self.inaxes = None
 
         self._update_enter_leave()
 
@@ -1796,6 +1797,7 @@ class FigureCanvasBase(object):
         """
         return self._is_saving
 
+    @cbook.deprecated("2.2")
     def onRemove(self, ev):
         """
         Mouse event processor which removes the top artist
@@ -1805,7 +1807,7 @@ class FigureCanvasBase(object):
             canvas.mpl_connect('mouse_press_event',canvas.onRemove)
         """
         # Find the top artist under the cursor
-        under = sorted(self.figure.hitlist(ev), key=lambda x: x.zorder)
+        under = cbook._topmost_artist(self.figure.hitlist(ev))
         h = None
         if under:
             h = under[-1]
@@ -2082,27 +2084,25 @@ class FigureCanvasBase(object):
             groupings[name].sort()
         return groupings
 
-    def _get_output_canvas(self, format):
-        """Return a canvas that is suitable for saving figures to a specified
-        file format. If necessary, this function will switch to a registered
-        backend that supports the format.
+    def _get_output_canvas(self, fmt):
         """
-        method_name = 'print_%s' % format
+        Return a canvas suitable for saving figures to a specified file format.
 
-        # check if this canvas supports the requested format
+        If necessary, this function will switch to a registered backend that
+        supports the format.
+        """
+        method_name = 'print_%s' % fmt
+        # Return the current canvas if it supports the requested format.
         if hasattr(self, method_name):
             return self
-
-        # check if there is a default canvas for the requested format
-        canvas_class = get_registered_canvas_class(format)
+        # Return a default canvas for the requested format, if it exists.
+        canvas_class = get_registered_canvas_class(fmt)
         if canvas_class:
             return self.switch_backends(canvas_class)
-
-        # else report error for unsupported format
-        formats = sorted(self.get_supported_filetypes())
-        raise ValueError('Format "%s" is not supported.\n'
-                         'Supported formats: '
-                         '%s.' % (format, ', '.join(formats)))
+        # Else report error for unsupported format.
+        raise ValueError(
+            "Format {!r} is not supported (supported formats: {})"
+            .format(fmt, ", ".join(sorted(self.get_supported_filetypes()))))
 
     def print_figure(self, filename, dpi=None, facecolor=None, edgecolor=None,
                      orientation='portrait', format=None, **kwargs):
@@ -2147,9 +2147,20 @@ class FigureCanvasBase(object):
 
         """
         self._is_saving = True
+        # Remove the figure manager, if any, to avoid resizing the GUI widget.
+        # Having *no* manager and a *None* manager are currently different (see
+        # Figure.show); should probably be normalized to None at some point.
+        _no_manager = object()
+        if hasattr(self, 'manager'):
+            manager = self.manager
+            del self.manager
+        else:
+            manager = _no_manager
 
         if format is None:
             # get format from filename, or from backend's default filetype
+            if isinstance(filename, getattr(os, "PathLike", ())):
+                filename = os.fspath(filename)
             if isinstance(filename, six.string_types):
                 format = os.path.splitext(filename)[1][1:]
             if format is None or format == '':
@@ -2188,16 +2199,9 @@ class FigureCanvasBase(object):
         if bbox_inches:
             # call adjust_bbox to save only the given area
             if bbox_inches == "tight":
-                # when bbox_inches == "tight", it saves the figure
-                # twice. The first save command is just to estimate
-                # the bounding box of the figure. A stringIO object is
-                # used as a temporary file object, but it causes a
-                # problem for some backends (ps backend with
-                # usetex=True) if they expect a filename, not a
-                # file-like object. As I think it is best to change
-                # the backend to support file-like object, i'm going
-                # to leave it as it is. However, a better solution
-                # than stringIO seems to be needed. -JJL
+                # When bbox_inches == "tight", it saves the figure twice.  The
+                # first save command (to a BytesIO) is just to estimate the
+                # bounding box of the figure.
                 result = print_method(
                     io.BytesIO(),
                     dpi=dpi,
@@ -2265,8 +2269,9 @@ class FigureCanvasBase(object):
             self.figure.set_facecolor(origfacecolor)
             self.figure.set_edgecolor(origedgecolor)
             self.figure.set_canvas(self)
+            if manager is not _no_manager:
+                self.manager = manager
             self._is_saving = False
-            #self.figure.canvas.draw() ## seems superfluous
         return result
 
     @classmethod
@@ -2310,7 +2315,8 @@ class FigureCanvasBase(object):
         i = 1
         while os.path.isfile(os.path.join(save_dir, default_filename)):
             # attach numerical count to basename
-            default_filename = '{0}-{1}.{2}'.format(default_basename, i, default_filetype)
+            default_filename = (
+                '{}-{}.{}'.format(default_basename, i, default_filetype))
             i += 1
 
         return default_filename
@@ -2375,7 +2381,7 @@ class FigureCanvasBase(object):
 
         """
         if s == 'idle_event':
-            warn_deprecated(1.5,
+            cbook.warn_deprecated(1.5,
                 "idle_event is only implemented for the wx backend, and will "
                 "be removed in matplotlib 2.1. Use the animations module "
                 "instead.")
@@ -2407,9 +2413,18 @@ class FigureCanvasBase(object):
         ----------------
         interval : scalar
             Timer interval in milliseconds
-        callbacks : list
+
+        callbacks : List[Tuple[callable, Tuple, Dict]]
             Sequence of (func, args, kwargs) where ``func(*args, **kwargs)``
             will be executed by the timer every *interval*.
+
+            callbacks which return ``False`` or ``0`` will be removed from the
+            timer.
+
+        Examples
+        --------
+
+        >>> timer = fig.canvas.new_timer(callbacks=[(f1, (1, ), {'a': 3}),])
 
         """
         return TimerBase(*args, **kwargs)
@@ -2606,7 +2621,7 @@ def key_press_handler(event, canvas, toolbar=None):
         elif scalex == 'linear':
             try:
                 ax.set_xscale('log')
-            except ValueError:
+            except ValueError as exc:
                 warnings.warn(str(exc))
                 ax.set_xscale('linear')
             ax.figure.canvas.draw_idle()
@@ -2644,6 +2659,12 @@ class FigureManagerBase(object):
     num : int or str
         The figure number
 
+    key_press_handler_id : int
+        The default key handler cid, when using the toolmanager.  Can be used
+        to disable default key press handling ::
+
+            figure.canvas.mpl_disconnect(
+                figure.canvas.manager.key_press_handler_id)
     """
     def __init__(self, canvas, num):
         self.canvas = canvas
@@ -2651,16 +2672,6 @@ class FigureManagerBase(object):
         self.num = num
 
         self.key_press_handler_id = None
-        """
-        The returned id from connecting the default key handler via
-        :meth:`FigureCanvasBase.mpl_connect`.
-
-        To disable default key press handling::
-
-            manager, canvas = figure.canvas.manager, figure.canvas
-            canvas.mpl_disconnect(manager.key_press_handler_id)
-
-        """
         if rcParams['toolbar'] != 'toolmanager':
             self.key_press_handler_id = self.canvas.mpl_connect(
                 'key_press_event',
@@ -2692,6 +2703,7 @@ class FigureManagerBase(object):
         if rcParams['toolbar'] != 'toolmanager':
             key_press_handler(event, self.canvas, self.canvas.toolbar)
 
+    @cbook.deprecated("2.2")
     def show_popup(self, msg):
         """Display message in a popup -- GUI only."""
 
@@ -2775,9 +2787,7 @@ class NavigationToolbar2(object):
     def __init__(self, canvas):
         self.canvas = canvas
         canvas.toolbar = self
-        # a dict from axes index to a list of view limits
-        self._views = cbook.Stack()
-        self._positions = cbook.Stack()  # stack of subplot positions
+        self._nav_stack = cbook.Stack()
         self._xypress = None  # the location and axis info at the time
                               # of the press
         self._idPress = None
@@ -2798,20 +2808,12 @@ class NavigationToolbar2(object):
         self.mode = ''  # a mode string for the status bar
         self.set_history_buttons()
 
-        @partial(canvas.mpl_connect, 'draw_event')
-        def define_home(event):
-            self.push_current()
-            # The decorator sets `define_home` to the callback cid, so we can
-            # disconnect it after the first use.
-            canvas.mpl_disconnect(define_home)
-
     def set_message(self, s):
         """Display a message on toolbar or in status bar."""
 
     def back(self, *args):
         """move back up the view lim stack"""
-        self._views.back()
-        self._positions.back()
+        self._nav_stack.back()
         self.set_history_buttons()
         self._update_view()
 
@@ -2830,15 +2832,13 @@ class NavigationToolbar2(object):
 
     def forward(self, *args):
         """Move forward in the view lim stack."""
-        self._views.forward()
-        self._positions.forward()
+        self._nav_stack.forward()
         self.set_history_buttons()
         self._update_view()
 
     def home(self, *args):
         """Restore the original view."""
-        self._views.home()
-        self._positions.home()
+        self._nav_stack.home()
         self.set_history_buttons()
         self._update_view()
 
@@ -2893,7 +2893,7 @@ class NavigationToolbar2(object):
                            if a.contains(event) and a.get_visible()]
 
                 if artists:
-                    a = max(artists, key=lambda x: x.zorder)
+                    a = cbook._topmost_artist(artists)
                     if a is not event.inaxes.patch:
                         data = a.get_cursor_data(event)
                         if data is not None:
@@ -2939,7 +2939,7 @@ class NavigationToolbar2(object):
         self.set_message(self.mode)
 
     def press(self, event):
-        """Called whenver a mouse button is pressed."""
+        """Called whenever a mouse button is pressed."""
 
     def press_pan(self, event):
         """Callback for mouse button press in pan/zoom mode."""
@@ -2951,6 +2951,10 @@ class NavigationToolbar2(object):
         else:
             self._button_pressed = None
             return
+
+        if self._nav_stack() is None:
+            # set the home button to this view
+            self.push_current()
 
         x, y = event.x, event.y
         self._xypress = []
@@ -2987,6 +2991,10 @@ class NavigationToolbar2(object):
             self._button_pressed = None
             return
 
+        if self._nav_stack() is None:
+            # set the home button to this view
+            self.push_current()
+
         x, y = event.x, event.y
         self._xypress = []
         for i, a in enumerate(self.canvas.figure.get_axes()):
@@ -3015,16 +3023,13 @@ class NavigationToolbar2(object):
 
     def push_current(self):
         """Push the current view limits and position onto the stack."""
-        views = []
-        pos = []
-        for a in self.canvas.figure.get_axes():
-            views.append(a._get_view())
-            # Store both the original and modified positions
-            pos.append((
-                a.get_position(True).frozen(),
-                a.get_position().frozen()))
-        self._views.push(views)
-        self._positions.push(pos)
+        self._nav_stack.push(
+            WeakKeyDictionary(
+                {ax: (ax._get_view(),
+                      # Store both the original and modified positions.
+                      (ax.get_position(True).frozen(),
+                       ax.get_position().frozen()))
+                 for ax in self.canvas.figure.axes}))
         self.set_history_buttons()
 
     def release(self, event):
@@ -3145,19 +3150,17 @@ class NavigationToolbar2(object):
         """Update the viewlim and position from the view and
         position stack for each axes.
         """
-
-        views = self._views()
-        if views is None:
+        nav_info = self._nav_stack()
+        if nav_info is None:
             return
-        pos = self._positions()
-        if pos is None:
-            return
-        for i, a in enumerate(self.canvas.figure.get_axes()):
-            a._set_view(views[i])
+        # Retrieve all items at once to avoid any risk of GC deleting an Axes
+        # while in the middle of the loop below.
+        items = list(nav_info.items())
+        for ax, (view, (pos_orig, pos_active)) in items:
+            ax._set_view(view)
             # Restore both the original and modified positions
-            a.set_position(pos[i][0], 'original')
-            a.set_position(pos[i][1], 'active')
-
+            ax._set_position(pos_orig, 'original')
+            ax._set_position(pos_active, 'active')
         self.canvas.draw_idle()
 
     def save_figure(self, *args):
@@ -3175,8 +3178,7 @@ class NavigationToolbar2(object):
 
     def update(self):
         """Reset the axes stack."""
-        self._views.clear()
-        self._positions.clear()
+        self._nav_stack.clear()
         self.set_history_buttons()
 
     def zoom(self, *args):
@@ -3223,6 +3225,13 @@ class ToolContainerBase(object):
         The tools with which this `ToolContainer` wants to communicate.
     """
 
+    _icon_extension = '.png'
+    """
+    Toolcontainer button icon image format extension
+
+    **String**: Image extension
+    """
+
     def __init__(self, toolmanager):
         self.toolmanager = toolmanager
         self.toolmanager.toolmanager_connect('tool_removed_event',
@@ -3267,14 +3276,19 @@ class ToolContainerBase(object):
 
     def _get_image_filename(self, image):
         """Find the image based on its name."""
-        # TODO: better search for images, they are not always in the
-        # datapath
+        if not image:
+            return None
+
         basedir = os.path.join(rcParams['datapath'], 'images')
-        if image is not None:
-            fname = os.path.join(basedir, image)
-        else:
-            fname = None
-        return fname
+        possible_images = (
+            image,
+            image + self._icon_extension,
+            os.path.join(basedir, image),
+            os.path.join(basedir, image) + self._icon_extension)
+
+        for fname in possible_images:
+            if os.path.isfile(fname):
+                return fname
 
     def trigger_tool(self, name):
         """

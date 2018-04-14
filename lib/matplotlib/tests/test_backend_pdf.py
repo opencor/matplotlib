@@ -1,27 +1,24 @@
 # -*- encoding: utf-8 -*-
 
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 import six
 
 import io
 import os
+import sys
 import tempfile
 
+import numpy as np
 import pytest
 
-import numpy as np
-from matplotlib import checkdep_usetex, cm, rcParams
+from matplotlib import dviread, pyplot as plt, checkdep_usetex, rcParams
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib import pyplot as plt
+from matplotlib.testing.compare import compare_images
+from matplotlib.testing.decorators import image_comparison
 from matplotlib.testing.determinism import (_determinism_source_date_epoch,
                                             _determinism_check)
-from matplotlib.testing.decorators import image_comparison
-from matplotlib import dviread
-from matplotlib.testing.compare import compare_images
 
-import matplotlib as mpl
 
 needs_usetex = pytest.mark.xfail(
     not checkdep_usetex(True),
@@ -37,7 +34,7 @@ def test_use14corefonts():
     rcParams['font.sans-serif'] = ['Helvetica']
     rcParams['pdf.compression'] = 0
 
-    text = '''A three-line text positioned just above a blue line
+    text = u'''A three-line text positioned just above a blue line
 and containing some French characters and the euro symbol:
 "Merci pépé pour les 10 €"'''
 
@@ -69,6 +66,19 @@ def test_multipage_pagecount():
         assert pdf.get_pagecount() == 1
         pdf.savefig()
         assert pdf.get_pagecount() == 2
+
+
+def test_multipage_properfinalize():
+    pdfio = io.BytesIO()
+    with PdfPages(pdfio) as pdf:
+        for i in range(10):
+            fig = plt.figure()
+            ax = fig.add_subplot(111)
+            ax.set_title('This is a long title')
+            fig.savefig(pdf, format="pdf")
+    pdfio.seek(0)
+    assert sum(b'startxref' in line for line in pdfio) == 1
+    assert sys.getsizeof(pdfio) < 40000
 
 
 def test_multipage_keep_empty():
@@ -123,6 +133,13 @@ def test_composite_image():
     with PdfPages(io.BytesIO()) as pdf:
         fig.savefig(pdf, format="pdf")
         assert len(pdf._file._images) == 2
+
+
+@pytest.mark.skipif(sys.version_info < (3, 6), reason="requires Python 3.6+")
+def test_pdfpages_fspath():
+    from pathlib import Path
+    with PdfPages(Path(os.devnull)) as pdf:
+        pdf.savefig(plt.figure())
 
 
 def test_source_date_epoch():
@@ -208,3 +225,16 @@ def test_pdf_savefig_when_color_is_none(tmpdir):
     fig.savefig(str(expected_image), format='eps')
     result = compare_images(str(actual_image), str(expected_image), 0)
     assert result is None
+
+
+@needs_usetex
+def test_failing_latex(tmpdir):
+    """Test failing latex subprocess call"""
+    path = str(tmpdir.join("tmpoutput.pdf"))
+
+    rcParams['text.usetex'] = True
+
+    # This fails with "Double subscript"
+    plt.xlabel("$22_2_2$")
+    with pytest.raises(RuntimeError):
+        plt.savefig(path)
