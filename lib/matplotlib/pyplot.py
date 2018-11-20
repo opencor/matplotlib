@@ -123,6 +123,10 @@ def install_repl_displayhook():
 
             ipython_gui_name = backend2gui.get(get_backend())
             if ipython_gui_name:
+                if ipython_gui_name.startswith('qt'):
+                    from matplotlib.backends.qt_compat import QT_API
+                    if QT_API == 'PythonQt':
+                        ipython_gui_name = 'pythonqt'
                 ip.enable_gui(ipython_gui_name)
         else:
             _INSTALL_FIG_OBSERVER = True

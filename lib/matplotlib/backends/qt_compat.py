@@ -21,12 +21,14 @@ from matplotlib import rcParams
 QT_API_PYQT5 = "PyQt5"
 QT_API_PYSIDE2 = "PySide2"
 QT_API_PYQTv2 = "PyQt4v2"
+QT_API_PYTHONQT = 'PythonQt' # use PythonQt API for Qt5
 QT_API_PYSIDE = "PySide"
 QT_API_PYQT = "PyQt4"   # Use the old sip v1 API (Py3 defaults to v2).
 QT_API_ENV = os.environ.get("QT_API")
 # Mapping of QT_API_ENV to requested binding.  ETS does not support PyQt4v1.
 # (https://github.com/enthought/pyface/blob/master/pyface/qt/__init__.py)
 _ETS = {"pyqt5": QT_API_PYQT5, "pyside2": QT_API_PYSIDE2,
+        "pythonqt": QT_API_PYTHONQT,
         "pyqt": QT_API_PYQTv2, "pyside": QT_API_PYSIDE,
         None: None}
 # First, check if anything is already imported.
@@ -34,6 +36,8 @@ if "PyQt5.QtCore" in sys.modules:
     QT_API = QT_API_PYQT5
 elif "PySide2.QtCore" in sys.modules:
     QT_API = QT_API_PYSIDE2
+elif "PythonQt.QtCore" in sys.modules:
+    QT_API = QT_API_PYTHONQT
 elif "PyQt4.QtCore" in sys.modules:
     QT_API = QT_API_PYQTv2
 elif "PySide.QtCore" in sys.modules:
@@ -59,7 +63,7 @@ else:
     except KeyError:
         raise RuntimeError(
             "The environment variable QT_API has the unrecognized value {!r};"
-            "valid values are 'pyqt5', 'pyside2', 'pyqt', and 'pyside'")
+            "valid values are 'pyqt5', 'pyside2', 'pythonqt', pyqt', and 'pyside'")
 
 
 def _setup_pyqt5():
@@ -73,13 +77,37 @@ def _setup_pyqt5():
         QtCore.Property = QtCore.pyqtProperty
     elif QT_API == QT_API_PYSIDE2:
         from PySide2 import QtCore, QtGui, QtWidgets, __version__
+    elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
+        from PythonQt import QtCore, QtGui
+        __version__ = "3.2"
+        __version_info__ = "-"
+
+        # PythonQt does not yet support a getSaveFileName variant returning the selected filter
+        def _getSaveFileName(*args, **kwargs):
+            return (QtGui.QFileDialog.getSaveFileName(*args, **kwargs), None)
+
+        # Provide color getters
+        def getHslF(c):
+            return (c.hslHueF(), c.hslSaturationF(), c.lightnessF(), c.alphaF())
+
+        def getHsvF(c):
+            return (c.hueF(), c.saturationF(), c.valueF(), c.alphaF())
+
+        def getRgbF(c):
+            return (c.redF(), c.greenF(), c.blueF(), c.alphaF())
+
+        QtGui.QColor.getHslF = getHslF
+        QtGui.QColor.getHsvF = getHsvF
+        QtGui.QColor.getRgbF = getRgbF
     else:
         raise ValueError("Unexpected value for the 'backend.qt5' rcparam")
     _getSaveFileName = QtWidgets.QFileDialog.getSaveFileName
 
     def is_pyqt5():
-        return True
+        return QT_API in [QT_API_PYQT5, QT_API_PYSIDE2]
 
+    def is_qt5():
+        return True
 
 def _setup_pyqt4():
     global QtCore, QtGui, QtWidgets, __version__, is_pyqt5, _getSaveFileName
@@ -130,8 +158,11 @@ def _setup_pyqt4():
     def is_pyqt5():
         return False
 
+    def is_qt5():
+        return False
 
-if QT_API in [QT_API_PYQT5, QT_API_PYSIDE2]:
+
+if QT_API in [QT_API_PYQT5, QT_API_PYSIDE2, QT_API_PYTHONQT]:
     _setup_pyqt5()
 elif QT_API in [QT_API_PYQTv2, QT_API_PYSIDE, QT_API_PYQT]:
     _setup_pyqt4()
