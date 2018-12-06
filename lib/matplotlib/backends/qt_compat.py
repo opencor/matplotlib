@@ -67,7 +67,7 @@ else:
 
 
 def _setup_pyqt5():
-    global QtCore, QtGui, QtWidgets, __version__, is_pyqt5, _getSaveFileName
+    global QtCore, QtGui, QtWidgets, __version__, is_pyqt5, is_qt5, _getSaveFileName
 
     if QT_API == QT_API_PYQT5:
         from PyQt5 import QtCore, QtGui, QtWidgets
@@ -75,10 +75,12 @@ def _setup_pyqt5():
         QtCore.Signal = QtCore.pyqtSignal
         QtCore.Slot = QtCore.pyqtSlot
         QtCore.Property = QtCore.pyqtProperty
+        _getSaveFileName = QtWidgets.QFileDialog.getSaveFileName
     elif QT_API == QT_API_PYSIDE2:
         from PySide2 import QtCore, QtGui, QtWidgets, __version__
+        _getSaveFileName = QtWidgets.QFileDialog.getSaveFileName
     elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
-        from PythonQt import QtCore, QtGui
+        from PythonQt import QtCore, QtGui, QtWidgets
         __version__ = "3.2"
         __version_info__ = "-"
 
@@ -99,9 +101,11 @@ def _setup_pyqt5():
         QtGui.QColor.getHslF = getHslF
         QtGui.QColor.getHsvF = getHsvF
         QtGui.QColor.getRgbF = getRgbF
+
+        # PythonQt doesn't have a separate QtWidgets module
+        QtWidgets = QtGui
     else:
         raise ValueError("Unexpected value for the 'backend.qt5' rcparam")
-    _getSaveFileName = QtWidgets.QFileDialog.getSaveFileName
 
     def is_pyqt5():
         return QT_API in [QT_API_PYQT5, QT_API_PYSIDE2]
@@ -110,7 +114,7 @@ def _setup_pyqt5():
         return True
 
 def _setup_pyqt4():
-    global QtCore, QtGui, QtWidgets, __version__, is_pyqt5, _getSaveFileName
+    global QtCore, QtGui, QtWidgets, __version__, is_pyqt5, is_qt5, _getSaveFileName
 
     def _setup_pyqt4_internal(api):
         global QtCore, QtGui, QtWidgets, \
