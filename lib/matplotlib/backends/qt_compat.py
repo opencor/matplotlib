@@ -80,7 +80,7 @@ def _setup_pyqt5():
         from PySide2 import QtCore, QtGui, QtWidgets, __version__
         _getSaveFileName = QtWidgets.QFileDialog.getSaveFileName
     elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
-        from PythonQt import QtCore, QtGui, QtWidgets
+        from PythonQt import QtCore, QtGui
         __version__ = "3.2"
         __version_info__ = "-"
 
