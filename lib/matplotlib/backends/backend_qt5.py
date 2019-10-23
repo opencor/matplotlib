@@ -103,7 +103,7 @@ def _create_qApp():
 
     if qApp is None:
         app = QtWidgets.QApplication.instance()
-        if is_pyqt5 and app is None:
+        if is_pyqt5() and app is None:
             # check for DISPLAY env variable on X11 build of Qt
             if is_qt5():
                 try:
