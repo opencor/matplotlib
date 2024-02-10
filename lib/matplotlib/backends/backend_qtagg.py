@@ -4,6 +4,8 @@ Render to qt from agg.
 
 import ctypes
 
+from qimage2ndarray import array2qimage
+
 from matplotlib.transforms import Bbox
 
 from .qt_compat import QT_API, QtCore, QtGui
@@ -55,10 +57,11 @@ class FigureCanvasQTAgg(FigureCanvasAgg, FigureCanvasQT):
             else:
                 ptr = buf
 
-            painter.eraseRect(rect)  # clear the widget canvas
-            qimage = QtGui.QImage(ptr, buf.shape[1], buf.shape[0],
-                                  QtGui.QImage.Format.Format_RGBA8888)
+            # create a QImage from the array buffer
+            qimage = array2qimage(buf)
             qimage.setDevicePixelRatio(self.device_pixel_ratio)
+            # clear the widget canvas
+            painter.eraseRect(rect)
             # set origin using original QT coordinates
             origin = QtCore.QPoint(rect.left(), rect.top())
             painter.drawImage(origin, qimage)

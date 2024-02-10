@@ -107,7 +107,7 @@ def _create_qApp():
         if QT_API in {'PyQt6', 'PySide6'}:
             other_bindings = ('PyQt5', 'PySide2')
             qt_version = 6
-        elif QT_API in {'PyQt5', 'PySide2'}:
+        elif QT_API in {'PyQt5', 'PySide2', 'PythonQt'}:
             other_bindings = ('PyQt6', 'PySide6')
             qt_version = 5
         else:
@@ -498,9 +498,17 @@ class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
 class MainWindow(QtWidgets.QMainWindow):
     closing = QtCore.Signal()
 
+    def __init__(self):
+        QtWidgets.QMainWindow.__init__(self)
+        self._closeCallbacks = []
+
+    def connectClosing(self, callback):
+        self._closeCallbacks.append(callback)
+
     def closeEvent(self, event):
-        self.closing.emit()
-        super().closeEvent(event)
+        for callback in self._closeCallbacks:
+            callback()
+        QtWidgets.QMainWindow.closeEvent(self, event)
 
 
 class FigureManagerQT(FigureManagerBase):
@@ -520,6 +528,7 @@ class FigureManagerQT(FigureManagerBase):
     def __init__(self, canvas, num):
         self.window = MainWindow()
         super().__init__(canvas, num)
+        self.window.setAttribute(QtCore.Qt.WA_DeleteOnClose)
         self.window.closing.connect(self._widgetclosed)
 
         if sys.platform != "darwin":
@@ -1019,4 +1028,6 @@ class _BackendQT(_Backend):
     backend_version = __version__
     FigureCanvas = FigureCanvasQT
     FigureManager = FigureManagerQT
-    mainloop = FigureManagerQT.start_main_loop
+    # PythonQt is already running the event loop
+    if QT_API != "PythonQt":
+        mainloop = FigureManagerQT.start_main_loop

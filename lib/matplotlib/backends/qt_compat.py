@@ -27,12 +27,14 @@ QT_API_PYQT6 = "PyQt6"
 QT_API_PYSIDE6 = "PySide6"
 QT_API_PYQT5 = "PyQt5"
 QT_API_PYSIDE2 = "PySide2"
+QT_API_PYTHONQT = "PythonQt"
 QT_API_ENV = os.environ.get("QT_API")
 if QT_API_ENV is not None:
     QT_API_ENV = QT_API_ENV.lower()
 _ETS = {  # Mapping of QT_API_ENV to requested binding.
     "pyqt6": QT_API_PYQT6, "pyside6": QT_API_PYSIDE6,
     "pyqt5": QT_API_PYQT5, "pyside2": QT_API_PYSIDE2,
+    "pythonqt": QT_API_PYTHONQT,
 }
 # First, check if anything is already imported.
 if sys.modules.get("PyQt6.QtCore"):
@@ -43,6 +45,8 @@ elif sys.modules.get("PyQt5.QtCore"):
     QT_API = QT_API_PYQT5
 elif sys.modules.get("PySide2.QtCore"):
     QT_API = QT_API_PYSIDE2
+elif sys.modules.get("PythonQt.QtCore"):
+    QT_API = QT_API_PYTHONQT
 # Otherwise, check the QT_API environment variable (from Enthought).  This can
 # only override the binding, not the backend (in other words, we check that the
 # requested backend actually matches).  Use _get_backend_or_none to avoid
@@ -104,11 +108,36 @@ def _setup_pyqt5plus():
         def _isdeleted(obj):
             return not shiboken2.isValid(obj)
         _to_int = int
+    elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
+        from PythonQt import QtCore, QtGui
+        __version__ = "3.2"
+        __version_info__ = "-"
+
+        # PythonQt does not yet support a getSaveFileName variant returning the selected filter
+        def _getSaveFileName(*args, **kwargs):
+            return (QtGui.QFileDialog.getSaveFileName(*args, **kwargs), None)
+
+        # Provide color getters
+        def getHslF(c):
+            return (c.hslHueF(), c.hslSaturationF(), c.lightnessF(), c.alphaF())
+
+        def getHsvF(c):
+            return (c.hueF(), c.saturationF(), c.valueF(), c.alphaF())
+
+        def getRgbF(c):
+            return (c.redF(), c.greenF(), c.blueF(), c.alphaF())
+
+        QtGui.QColor.getHslF = getHslF
+        QtGui.QColor.getHsvF = getHsvF
+        QtGui.QColor.getRgbF = getRgbF
+
+        # PythonQt doesn't have a separate QtWidgets module
+        QtWidgets = QtGui
     else:
         raise AssertionError(f"Unexpected QT_API: {QT_API}")
 
 
-if QT_API in [QT_API_PYQT6, QT_API_PYQT5, QT_API_PYSIDE6, QT_API_PYSIDE2]:
+if QT_API in [QT_API_PYQT6, QT_API_PYQT5, QT_API_PYSIDE6, QT_API_PYSIDE2, QT_API_PYTHONQT]:
     _setup_pyqt5plus()
 elif QT_API is None:  # See above re: dict.__getitem__.
     if _QT_FORCE_QT5_BINDING:
