@@ -132,6 +132,12 @@ def _setup_pyqt5plus():
 
         # PythonQt doesn't have a separate QtWidgets module
         QtWidgets = QtGui
+
+        def _isdeleted(obj):
+            return 0 ############not shiboken2.isValid(obj)
+
+        _to_int = int
+
     else:
         raise AssertionError(f"Unexpected QT_API: {QT_API}")
 
