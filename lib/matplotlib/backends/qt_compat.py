@@ -110,8 +110,7 @@ def _setup_pyqt5plus():
         _to_int = int
     elif QT_API == QT_API_PYTHONQT:  # try importing PythonQt
         from PythonQt import QtCore, QtGui
-        __version__ = "3.2"
-        __version_info__ = "-"
+        __version__ = QtCore.qVersion()
 
         # PythonQt does not yet support a getSaveFileName variant returning the selected filter
         def _getSaveFileName(*args, **kwargs):
@@ -165,7 +164,11 @@ elif QT_API is None:  # See above re: dict.__getitem__.
         )
 else:  # We should not get there.
     raise AssertionError(f"Unexpected QT_API: {QT_API}")
-_version_info = tuple(QtCore.QLibraryInfo.version().segments())
+
+if QT_API == QT_API_PYTHONQT:
+    _version_info = tuple(int(v) for v in __version__.split('.'))
+else:
+    _version_info = tuple(QtCore.QLibraryInfo.version().segments())
 
 
 if _version_info < (5, 12):
