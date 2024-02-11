@@ -21,7 +21,7 @@ from .qt_compat import (
 # SPECIAL_KEYS are Qt::Key that do *not* return their Unicode name
 # instead they have manually specified names.
 SPECIAL_KEYS = {
-    _to_int(getattr(QtCore.Qt.Key, k)): v for k, v in [
+    _to_int(getattr(QtCore.Qt, k)): v for k, v in [
         ("Key_Escape", "escape"),
         ("Key_Tab", "tab"),
         ("Key_Backspace", "backspace"),
@@ -66,8 +66,8 @@ SPECIAL_KEYS = {
 # Elements are (Qt::KeyboardModifiers, Qt::Key) tuples.
 # Order determines the modifier order (ctrl+alt+...) reported by Matplotlib.
 _MODIFIER_KEYS = [
-    (_to_int(getattr(QtCore.Qt.KeyboardModifier, mod)),
-     _to_int(getattr(QtCore.Qt.Key, key)))
+    (_to_int(getattr(QtCore.Qt, mod)),
+     _to_int(getattr(QtCore.Qt, key)))
     for mod, key in [
         ("ControlModifier", "Key_Control"),
         ("AltModifier", "Key_Alt"),
@@ -76,7 +76,7 @@ _MODIFIER_KEYS = [
     ]
 ]
 cursord = {
-    k: getattr(QtCore.Qt.CursorShape, v) for k, v in [
+    k: getattr(QtCore.Qt, v) for k, v in [
         (cursors.MOVE, "SizeAllCursor"),
         (cursors.HAND, "PointingHandCursor"),
         (cursors.POINTER, "ArrowCursor"),
@@ -183,7 +183,7 @@ class FigureCanvasQT(FigureCanvasBase, QtWidgets.QWidget):
     manager_class = _api.classproperty(lambda cls: FigureManagerQT)
 
     buttond = {
-        getattr(QtCore.Qt.MouseButton, k): v for k, v in [
+        getattr(QtCore.Qt, k): v for k, v in [
             ("LeftButton", MouseButton.LEFT),
             ("RightButton", MouseButton.RIGHT),
             ("MiddleButton", MouseButton.MIDDLE),
