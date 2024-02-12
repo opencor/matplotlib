@@ -14,7 +14,7 @@ import matplotlib.backends.qt_editor.figureoptions as figureoptions
 from . import qt_compat
 from .qt_compat import (
     QtCore, QtGui, QtWidgets, __version__, QT_API,
-    _to_int, _isdeleted, _maybe_allow_interrupt
+    _to_int, _maybe_allow_interrupt
 )
 
 
@@ -157,12 +157,6 @@ class TimerQT(TimerBase):
         self._timer = QtCore.QTimer()
         self._timer.timeout.connect(self._on_timer)
         super().__init__(*args, **kwargs)
-
-    def __del__(self):
-        # The check for deletedness is needed to avoid an error at animation
-        # shutdown with PySide2.
-        if not _isdeleted(self._timer):
-            self._timer_stop()
 
     def _timer_set_single_shot(self):
         self._timer.setSingleShot(self._single)
